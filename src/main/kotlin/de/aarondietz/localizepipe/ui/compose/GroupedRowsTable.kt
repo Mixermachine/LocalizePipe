@@ -1,4 +1,4 @@
-package de.aarondietz.localizepipe.ui
+package de.aarondietz.localizepipe.ui.compose
 
 import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.VerticalScrollbar

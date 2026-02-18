@@ -1,4 +1,4 @@
-package de.aarondietz.localizepipe
+package de.aarondietz.localizepipe.ui.toolwindow
 
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAware
@@ -8,11 +8,10 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
-import de.aarondietz.localizepipe.ui.LocalizePipeToolWindowContent
-import de.aarondietz.localizepipe.ui.LocalizePipeToolWindowController
+import de.aarondietz.localizepipe.ui.compose.LocalizePipeToolWindowContent
 import org.jetbrains.jewel.bridge.addComposeTab
 
-class MyToolWindowFactory : ToolWindowFactory, DumbAware {
+class LocalizePipeToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun shouldBeAvailable(project: Project) = true
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {

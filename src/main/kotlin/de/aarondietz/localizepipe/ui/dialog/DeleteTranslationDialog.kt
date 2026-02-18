@@ -1,4 +1,4 @@
-package de.aarondietz.localizepipe.ui
+package de.aarondietz.localizepipe.ui.dialog
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper

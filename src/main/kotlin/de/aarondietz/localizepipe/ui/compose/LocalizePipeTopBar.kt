@@ -1,4 +1,4 @@
-package de.aarondietz.localizepipe.ui
+package de.aarondietz.localizepipe.ui.compose
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import de.aarondietz.localizepipe.model.ScanScope
+import de.aarondietz.localizepipe.ui.toolwindow.ToolWindowUiState
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 

@@ -1,4 +1,4 @@
-package de.aarondietz.localizepipe.ui
+package de.aarondietz.localizepipe.ui.compose
 
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.StringEntryRow

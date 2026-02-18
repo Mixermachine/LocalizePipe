@@ -1,4 +1,4 @@
-package de.aarondietz.localizepipe.ui
+package de.aarondietz.localizepipe.ui.compose
 
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +28,8 @@ import com.intellij.openapi.project.Project
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.settings.LocalizePipeSettingsConfigurable
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
+import de.aarondietz.localizepipe.ui.dialog.chooseDeleteTranslationTarget
+import de.aarondietz.localizepipe.ui.toolwindow.LocalizePipeToolWindowController
 import org.jetbrains.jewel.ui.component.Text
 import java.util.Locale
 

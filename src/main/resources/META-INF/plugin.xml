@@ -30,7 +30,7 @@
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="LocalizePipe" anchor="right" factoryClass="de.aarondietz.localizepipe.MyToolWindowFactory"
+        <toolWindow id="LocalizePipe" anchor="right" factoryClass="de.aarondietz.localizepipe.ui.toolwindow.LocalizePipeToolWindowFactory"
                     icon="/icon_translate.svg"/>
         <projectConfigurable id="de.aarondietz.localizepipe.settings.project"
                              key="settings.display.name"
