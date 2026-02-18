@@ -105,15 +105,20 @@ class LocalAiTranslationService(
                     message = "Unknown translation error",
                 )
             }
-
-            latestText = translatedText
-            val validation = TranslationOutputValidator.validate(
+            val normalizedTranslatedText = alignTrailingPeriodToSource(
                 baseText = row.baseText,
                 translatedText = translatedText,
+                removeAddedTrailingPeriod = settings.removeAddedTrailingPeriod(),
+            )
+
+            latestText = normalizedTranslatedText
+            val validation = TranslationOutputValidator.validate(
+                baseText = row.baseText,
+                translatedText = normalizedTranslatedText,
             )
             if (validation.isValid) {
                 return row.copy(
-                    proposedText = translatedText,
+                    proposedText = normalizedTranslatedText,
                     status = RowStatus.READY,
                     message = null,
                 )
@@ -356,6 +361,28 @@ class LocalAiTranslationService(
                 return "Ollama request failed (HTTP $statusCode): $remoteError"
             }
             return "Ollama request failed (HTTP $statusCode)"
+        }
+
+        internal fun alignTrailingPeriodToSource(
+            baseText: String,
+            translatedText: String,
+            removeAddedTrailingPeriod: Boolean,
+        ): String {
+            if (!removeAddedTrailingPeriod) {
+                return translatedText
+            }
+            val baseTrimmed = baseText.trimEnd()
+            if (baseTrimmed.endsWith(".")) {
+                return translatedText
+            }
+
+            val translatedTrimmed = translatedText.trimEnd()
+            if (!translatedTrimmed.endsWith(".") || translatedTrimmed.endsWith("...")) {
+                return translatedText
+            }
+
+            val trailingWhitespace = translatedText.substring(translatedTrimmed.length)
+            return translatedTrimmed.dropLast(1) + trailingWhitespace
         }
 
         private fun extractJsonErrorMessage(body: String?): String? {

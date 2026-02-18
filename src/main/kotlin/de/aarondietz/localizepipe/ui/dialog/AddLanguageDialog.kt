@@ -4,6 +4,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.ColoredListCellRenderer
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -20,6 +21,8 @@ import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JList
 import javax.swing.JPanel
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 
 internal data class AddLanguageRequest(
     val localeTag: String,
@@ -46,11 +49,14 @@ private class AddLanguageDialog(
     preselectedTargetIds: Set<String>,
 ) : DialogWrapper(project, true) {
     private val localeComboBox = ComboBox<LocaleOption>()
+    private val localeFilterField = SearchTextField(false)
     private val targetRows = linkedMapOf<String, TargetRow>()
     private val detailsLabel = JBLabel()
     private val kindButtons = linkedMapOf<ResourceKind, JBRadioButton>()
     private val kindButtonGroup = ButtonGroup()
     private val targetsPanel = JPanel()
+    private var allLocaleOptions: List<LocaleOption> = emptyList()
+    private var pendingPreselectedLocaleTag: String? = normalizeLocaleTag(preselectedLocaleTag)
     private val allKinds = targets.map { it.originKind }.distinct()
     private val activeKindsByExistingLocales = targets
         .filter { it.existingLocaleTags.isNotEmpty() }
@@ -68,10 +74,9 @@ private class AddLanguageDialog(
         init()
 
         localeComboBox.renderer = LocaleOptionRenderer()
-        localeComboBox.isEditable = true
-        if (!preselectedLocaleTag.isNullOrBlank()) {
-            localeComboBox.editor.item = preselectedLocaleTag
-        }
+        localeComboBox.isEditable = false
+        localeComboBox.maximumRowCount = 14
+        installLocaleFiltering()
 
         val targetIdsByKind = targets.associate { target -> target.id to target.originKind }
         val preselectedKind = preselectedTargetIds
@@ -104,8 +109,12 @@ private class AddLanguageDialog(
             JBLabel("Select a new language and the resource roots where locale files should be created."),
             BorderLayout.NORTH,
         )
-        topPanel.add(languageTypePanel(), BorderLayout.CENTER)
-        topPanel.add(localeComboBox, BorderLayout.SOUTH)
+        val localePanel = JPanel(BorderLayout(0, 6))
+        localePanel.add(languageTypePanel(), BorderLayout.NORTH)
+        localeFilterField.textEditor.emptyText.text = "Filter languages by name or locale code"
+        localePanel.add(localeFilterField, BorderLayout.CENTER)
+        localePanel.add(localeComboBox, BorderLayout.SOUTH)
+        topPanel.add(localePanel, BorderLayout.CENTER)
         panel.add(topPanel, BorderLayout.NORTH)
 
         targetsPanel.layout = BoxLayout(targetsPanel, BoxLayout.Y_AXIS)
@@ -135,11 +144,12 @@ private class AddLanguageDialog(
     }
 
     override fun doOKAction() {
-        val localeTag = normalizeLocaleTag(localeSelectionText())
-        if (localeTag == null) {
-            setErrorText("Enter a valid locale tag (for example: fr, de, en-GB, pt-BR).")
+        val selectedLocale = localeComboBox.selectedItem as? LocaleOption
+        if (selectedLocale == null) {
+            setErrorText("Select a language from the supported language list.")
             return
         }
+        val localeTag = selectedLocale.tag
 
         val selectedIds = visibleTargetRows()
             .asSequence()
@@ -176,15 +186,20 @@ private class AddLanguageDialog(
             ResourceKind.COMPOSE_RESOURCES -> "Compose"
             null -> "-"
         }
-        val localeTag = normalizeLocaleTag(localeSelectionText())
+        val selectedLocale = localeComboBox.selectedItem as? LocaleOption
+        val localeTag = selectedLocale?.tag
         val localeAlreadyPresent = if (localeTag == null) {
             false
         } else {
             visibleRows.any { row -> row.target.existingLocaleTags.any { existing -> existing.equals(localeTag, ignoreCase = true) } }
         }
-        val localeSuffix = if (localeAlreadyPresent) " | Selected locale already detected in this type" else ""
+        val localeSuffix = when {
+            selectedLocale == null -> " | Select a supported language"
+            localeAlreadyPresent -> " | Selected locale already detected in this type"
+            else -> ""
+        }
         detailsLabel.text = "Type: $kindLabel | Selected resource roots: $selectedCount / ${visibleRows.size}$localeSuffix"
-        isOKActionEnabled = selectedCount > 0
+        isOKActionEnabled = selectedCount > 0 && selectedLocale != null
     }
 
     private fun languageTypePanel(): JPanel {
@@ -242,8 +257,8 @@ private class AddLanguageDialog(
             .map { normalizeLocaleTag(it) ?: it.replace('_', '-') }
             .toSet()
 
-        val previous = localeSelectionText()
-        val options = localeSuggestions(targets).map { tag ->
+        val previousSelectedTag = (localeComboBox.selectedItem as? LocaleOption)?.tag
+        allLocaleOptions = localeSuggestions(targets).map { tag ->
             val normalizedTag = normalizeLocaleTag(tag) ?: tag
             LocaleOption(
                 tag = normalizedTag,
@@ -251,27 +266,35 @@ private class AddLanguageDialog(
                 alreadyDetected = normalizedTag in existingForKind,
             )
         }
-
-        localeComboBox.removeAllItems()
-        options.forEach { option -> localeComboBox.addItem(option) }
-
-        val previousNormalized = normalizeLocaleTag(previous)
-        val preferredOption = options.firstOrNull { option -> option.tag == previousNormalized }
-            ?: options.firstOrNull { option -> !option.alreadyDetected }
-            ?: options.firstOrNull()
-        if (preferredOption != null) {
-            localeComboBox.selectedItem = preferredOption
-        } else if (!previous.isNullOrBlank()) {
-            localeComboBox.editor.item = previous
+        val preferredTag = previousSelectedTag ?: pendingPreselectedLocaleTag
+        applyLocaleFilter(localeFilterField.text, preferredTag)
+        if (preferredTag != null) {
+            pendingPreselectedLocaleTag = null
         }
     }
 
-    private fun localeSelectionText(): String? {
-        val selected = localeComboBox.selectedItem
-        return when (selected) {
-            is LocaleOption -> selected.tag
-            is String -> selected
-            else -> localeComboBox.editor.item?.toString()
+    private fun applyLocaleFilter(queryInput: String?, preferredTag: String? = null) {
+        val query = queryInput?.trim().orEmpty()
+        val filteredOptions = if (query.isBlank()) {
+            allLocaleOptions
+        } else {
+            allLocaleOptions.filter { option ->
+                option.displayLabel.contains(query, ignoreCase = true) ||
+                        option.tag.contains(query, ignoreCase = true)
+            }
+        }
+
+        localeComboBox.removeAllItems()
+        filteredOptions.forEach { option -> localeComboBox.addItem(option) }
+
+        val preferredOption = filteredOptions.firstOrNull { option -> option.tag.equals(preferredTag, ignoreCase = true) }
+            ?: if (query.isBlank()) {
+                filteredOptions.firstOrNull { option -> !option.alreadyDetected } ?: filteredOptions.firstOrNull()
+            } else {
+                filteredOptions.firstOrNull()
+            }
+        if (preferredOption != null) {
+            localeComboBox.selectedItem = preferredOption
         }
     }
 
@@ -299,6 +322,19 @@ private class AddLanguageDialog(
             return null
         }
         return normalized
+    }
+
+    private fun installLocaleFiltering() {
+        localeFilterField.textEditor.document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent?) = onLocaleEditorChanged()
+            override fun removeUpdate(e: DocumentEvent?) = onLocaleEditorChanged()
+            override fun changedUpdate(e: DocumentEvent?) = onLocaleEditorChanged()
+        })
+    }
+
+    private fun onLocaleEditorChanged() {
+        applyLocaleFilter(localeFilterField.text)
+        updateSelectionState()
     }
 }
 

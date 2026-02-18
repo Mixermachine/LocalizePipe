@@ -48,6 +48,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
     private lateinit var timeoutSecondsSpinner: JSpinner
     private lateinit var retryCountSpinner: JSpinner
     private lateinit var temperatureSpinner: JSpinner
+    private lateinit var removeAddedTrailingPeriodCheckBox: JCheckBox
     private lateinit var ollamaProviderPanel: JPanel
     private lateinit var huggingFaceProviderPanel: JPanel
     private lateinit var modelGuidanceLabel: JLabel
@@ -92,6 +93,10 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         timeoutSecondsSpinner = JSpinner(SpinnerNumberModel(45L, 5L, 600L, 1L))
         retryCountSpinner = JSpinner(SpinnerNumberModel(1, 0, 10, 1))
         temperatureSpinner = JSpinner(SpinnerNumberModel(0.1, 0.0, 2.0, 0.1))
+        removeAddedTrailingPeriodCheckBox =
+            JCheckBox("Remove trailing '.' when source text has no trailing '.'").apply {
+                toolTipText = "Prevents model-added final dots when the original text does not end with a dot."
+            }
         detectedSystemRamGb = TranslateGemmaSizingGuide.detectTotalSystemRamGb()
         detectedAvailableStorageGb = TranslateGemmaSizingGuide.detectAvailableStorageGb()
         recommendedGemmaSize = TranslateGemmaSizingGuide.recommendedSize(detectedSystemRamGb)
@@ -202,6 +207,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             add(
                 FormBuilder.createFormBuilder()
                     .addSeparator()
+                    .addComponent(removeAddedTrailingPeriodCheckBox)
                     .addLabeledComponent("Request timeout (seconds)", timeoutSecondsSpinner)
                     .addLabeledComponent("Retry count", retryCountSpinner)
                     .addLabeledComponent("Temperature", temperatureSpinner)
@@ -267,6 +273,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
                 huggingFaceBaseUrlField.text.trim() != appSettings.huggingFaceBaseUrl() ||
                 selectedModel(huggingFaceModelCombo) != appSettings.huggingFaceModel() ||
                 huggingFaceTokenField.text.trim() != appSettings.huggingFaceToken() ||
+                removeAddedTrailingPeriodCheckBox.isSelected != appSettings.removeAddedTrailingPeriod() ||
                 (timeoutSecondsSpinner.value as Number).toLong() != appSettings.requestTimeoutSeconds() ||
                 (retryCountSpinner.value as Number).toInt() != appSettings.retryCount() ||
                 (temperatureSpinner.value as Number).toFloat() != appSettings.temperature()
@@ -289,6 +296,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         appSettings.huggingFaceBaseUrl = huggingFaceBaseUrlField.text.trim()
         appSettings.huggingFaceModel = selectedModel(huggingFaceModelCombo).ifBlank { "google/translategemma-4b-it" }
         appSettings.huggingFaceToken = huggingFaceTokenField.text.trim()
+        appSettings.removeAddedTrailingPeriodConfig = removeAddedTrailingPeriodCheckBox.isSelected
         appSettings.timeoutSecondsConfig = (timeoutSecondsSpinner.value as Number).toLong()
         appSettings.retryCountConfig = (retryCountSpinner.value as Number).toInt()
         appSettings.temperatureConfig = (temperatureSpinner.value as Number).toFloat()
@@ -310,6 +318,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         huggingFaceBaseUrlField.text = appSettings.huggingFaceBaseUrl()
         huggingFaceModelCombo.selectedItem = appSettings.huggingFaceModel()
         huggingFaceTokenField.text = appSettings.huggingFaceToken()
+        removeAddedTrailingPeriodCheckBox.isSelected = appSettings.removeAddedTrailingPeriod()
         timeoutSecondsSpinner.value = appSettings.requestTimeoutSeconds()
         retryCountSpinner.value = appSettings.retryCount()
         temperatureSpinner.value = appSettings.temperature().toDouble()
@@ -447,6 +456,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             huggingFaceBaseUrl = huggingFaceBaseUrlField.text.trim().ifBlank { "https://api-inference.huggingface.co" },
             huggingFaceModel = selectedModel(huggingFaceModelCombo).ifBlank { "google/translategemma-4b-it" },
             huggingFaceToken = huggingFaceTokenField.text.trim(),
+            removeAddedTrailingPeriod = removeAddedTrailingPeriodCheckBox.isSelected,
             timeoutSeconds = (timeoutSecondsSpinner.value as Number).toLong(),
             retryCount = (retryCountSpinner.value as Number).toInt(),
             temperature = (temperatureSpinner.value as Number).toFloat(),
@@ -466,6 +476,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             huggingFaceBaseUrl = snapshot.huggingFaceBaseUrl
             huggingFaceModel = snapshot.huggingFaceModel
             huggingFaceToken = snapshot.huggingFaceToken
+            removeAddedTrailingPeriodConfig = snapshot.removeAddedTrailingPeriod
             timeoutSecondsConfig = snapshot.timeoutSeconds
             retryCountConfig = snapshot.retryCount
             temperatureConfig = snapshot.temperature
@@ -788,6 +799,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         val huggingFaceBaseUrl: String,
         val huggingFaceModel: String,
         val huggingFaceToken: String,
+        val removeAddedTrailingPeriod: Boolean,
         val timeoutSeconds: Long,
         val retryCount: Int,
         val temperature: Float,

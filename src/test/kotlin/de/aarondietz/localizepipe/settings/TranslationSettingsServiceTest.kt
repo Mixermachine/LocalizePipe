@@ -2,6 +2,7 @@ package de.aarondietz.localizepipe.settings
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TranslationSettingsServiceTest {
@@ -13,6 +14,7 @@ class TranslationSettingsServiceTest {
         assertEquals("translategemma:4b", service.activeModel())
         assertEquals("http://127.0.0.1:11434/api/generate", service.activeEndpoint())
         assertEquals(OllamaRuntimeMode.AUTO, service.ollamaRuntimeMode())
+        assertTrue(service.removeAddedTrailingPeriod())
         assertFalse(service.hasHuggingFaceToken())
     }
 

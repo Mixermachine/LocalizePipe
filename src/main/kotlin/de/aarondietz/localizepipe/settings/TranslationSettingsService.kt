@@ -40,6 +40,7 @@ class TranslationSettingsService :
         var temperature by property(0.1f)
         var timeoutSeconds by property(45L)
         var retryCount by property(1)
+        var removeAddedTrailingPeriod by property(true)
     }
 
     var providerType: TranslationProviderType
@@ -106,6 +107,12 @@ class TranslationSettingsService :
         get() = state.temperature
         set(value) {
             state.temperature = value
+        }
+
+    var removeAddedTrailingPeriodConfig: Boolean
+        get() = state.removeAddedTrailingPeriod
+        set(value) {
+            state.removeAddedTrailingPeriod = value
         }
 
     fun activeModel(): String {
@@ -175,5 +182,9 @@ class TranslationSettingsService :
 
     fun temperature(): Float {
         return temperatureConfig
+    }
+
+    fun removeAddedTrailingPeriod(): Boolean {
+        return removeAddedTrailingPeriodConfig
     }
 }

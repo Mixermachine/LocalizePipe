@@ -71,4 +71,37 @@ class LocalAiTranslationServiceTest {
 
         assertEquals("Ollama request failed (HTTP 503)", message)
     }
+
+    @Test
+    fun removesTrailingPeriodWhenSourceHasNoPeriodAndSettingEnabled() {
+        val normalized = LocalAiTranslationService.alignTrailingPeriodToSource(
+            baseText = "Save changes",
+            translatedText = "Speichern.",
+            removeAddedTrailingPeriod = true,
+        )
+
+        assertEquals("Speichern", normalized)
+    }
+
+    @Test
+    fun keepsTrailingPeriodWhenSourceHasPeriod() {
+        val normalized = LocalAiTranslationService.alignTrailingPeriodToSource(
+            baseText = "Save changes.",
+            translatedText = "Speichern.",
+            removeAddedTrailingPeriod = true,
+        )
+
+        assertEquals("Speichern.", normalized)
+    }
+
+    @Test
+    fun keepsTrailingPeriodWhenSettingDisabled() {
+        val normalized = LocalAiTranslationService.alignTrailingPeriodToSource(
+            baseText = "Save changes",
+            translatedText = "Speichern.",
+            removeAddedTrailingPeriod = false,
+        )
+
+        assertEquals("Speichern.", normalized)
+    }
 }
