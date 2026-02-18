@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "de.aarondietz"
-version = "1.0-SNAPSHOT"
+version = "0.0.2"
 
 repositories {
     mavenCentral()
@@ -22,6 +22,7 @@ dependencies {
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add plugin dependencies for compilation here:
+        @Suppress("UnstableApiUsage") // Yes composeUI might change. We accept this
         composeUI()
     }
 
@@ -45,6 +46,25 @@ intellijPlatform {
             recommended()
         }
     }
+
+    signing {
+        providers.environmentVariable("CERTIFICATE_CHAIN_FILE").orNull?.let {
+            certificateChainFile = file(it)
+        }
+        providers.environmentVariable("PRIVATE_KEY_FILE").orNull?.let {
+            privateKeyFile = file(it)
+        }
+        providers.environmentVariable("PRIVATE_KEY_PASSWORD").orNull?.let {
+            password = it
+        }
+    }
+
+    publishing {
+        providers.environmentVariable("PUBLISH_TOKEN").orNull?.let {
+            token = it
+        }
+        channels = providers.gradleProperty("pluginChannel").orNull?.let { listOf(it) } ?: listOf("default")
+    }
 }
 
 tasks {
@@ -52,6 +72,15 @@ tasks {
     withType<JavaCompile> {
         sourceCompatibility = "21"
         targetCompatibility = "21"
+    }
+
+    named("verifyPluginSignature") {
+        dependsOn("signPlugin")
+        notCompatibleWithConfigurationCache("Marketplace ZIP signing tasks are not reliably configuration-cache compatible.")
+    }
+
+    named("signPlugin") {
+        notCompatibleWithConfigurationCache("Marketplace ZIP signing tasks are not reliably configuration-cache compatible.")
     }
 }
 
