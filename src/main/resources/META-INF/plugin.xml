@@ -13,7 +13,11 @@
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
-        AI-assisted localisation workflow for Android and Compose Multiplatform `strings.xml` resources.
+        LocalizePipe helps you localize <code>strings.xml</code> faster inside IntelliJ.
+        It scans Android and Compose Multiplatform resource folders, finds missing or unchanged translations,
+        generates suggestions with Ollama or Hugging Face, validates placeholders/XML safety, and writes updates back
+        to locale files safely.
+        Use local models with Ollama for a privacy-friendly workflow without leaving your machine.
     ]]></description>
 
     <!-- Product and plugin compatibility requirements.
