@@ -1,0 +1,36 @@
+<!-- Plugin Configuration File: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN, cannot be changed between the plugin versions. -->
+    <id>de.aarondietz.LocalizePipe</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
+    <name>LocalizePipe</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor url="https://github.com/aarond">Aaron Dietz</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
+    <description><![CDATA[
+        AI-assisted localisation workflow for Android and Compose Multiplatform `strings.xml` resources.
+    ]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.compose</depends>
+
+    <depends>com.intellij.modules.xml</depends>
+    <depends>com.intellij.properties</depends>
+    <resource-bundle>messages.MyMessageBundle</resource-bundle>
+    <!-- Extensions defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="LocalizePipe" anchor="right" factoryClass="de.aarondietz.localizepipe.MyToolWindowFactory"
+                    icon="/icon_translate.svg"/>
+        <projectConfigurable id="de.aarondietz.localizepipe.settings.project"
+                             displayName="LocalizePipe"
+                             instance="de.aarondietz.localizepipe.settings.LocalizePipeSettingsConfigurable"/>
+    </extensions>
+</idea-plugin>
