@@ -11,6 +11,7 @@ import com.intellij.psi.PsiManager
 import com.intellij.psi.xml.XmlFile
 import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.model.StringEntryRow
+import de.aarondietz.localizepipe.model.TranslationDeleteTarget
 
 class TranslationApplier(private val project: Project) {
     fun apply(
@@ -52,6 +53,47 @@ class TranslationApplier(private val project: Project) {
 
         LOG.info("Apply operation completed (processed=$processedCount, applied=$appliedCount, errors=${errors.size})")
         return ApplyResult(appliedCount = appliedCount, errors = errors)
+    }
+
+    fun deleteTranslations(
+        target: TranslationDeleteTarget,
+        onProgress: (processedCount: Int, deletedCount: Int) -> Unit = { _, _ -> },
+        shouldCancel: () -> Boolean = { false },
+    ): ApplyResult {
+        val errors = mutableListOf<String>()
+        var deletedCount = 0
+        var processedCount = 0
+        LOG.info("Delete operation started (key='${target.key}', locales=${target.localeEntries.size})")
+
+        WriteCommandAction.writeCommandAction(project)
+            .withName("Delete Localized String Entries")
+            .run<Throwable> {
+                for (localeEntry in target.localeEntries) {
+                    if (shouldCancel()) {
+                        throw ProcessCanceledException()
+                    }
+
+                    try {
+                        val localeFile = LocalFileSystem.getInstance().findFileByPath(localeEntry.localeFilePath)
+                            ?: error("Locale file not found: ${localeEntry.localeFilePath}")
+                        val currentText = localeFile.inputStream.bufferedReader().use { it.readText() }
+                        val (updatedText, wasDeleted) = removeStringText(currentText, target.key)
+                        if (wasDeleted) {
+                            VfsUtil.saveText(localeFile, updatedText)
+                            deletedCount++
+                        }
+                    } catch (error: Throwable) {
+                        LOG.warn("Failed to delete key='${target.key}' locale='${localeEntry.localeTag}'", error)
+                        errors += "${target.key} (${localeEntry.localeTag}): ${error.message}"
+                    }
+
+                    processedCount++
+                    onProgress(processedCount, deletedCount)
+                }
+            }
+
+        LOG.info("Delete operation completed (processed=$processedCount, deleted=$deletedCount, errors=${errors.size})")
+        return ApplyResult(appliedCount = deletedCount, errors = errors)
     }
 
     private fun ensureLocaleFile(row: StringEntryRow) =
@@ -97,9 +139,10 @@ class TranslationApplier(private val project: Project) {
     internal companion object {
         internal fun normalizeForWrite(translatedText: String, kind: ResourceKind): String {
             val xmlUnescaped = StringUtil.unescapeXmlEntities(translatedText).trimEnd('\r', '\n')
+            val xmlSanitized = normalizeProblematicWhitespace(stripInvalidXmlChars(xmlUnescaped))
             return when (kind) {
-                ResourceKind.ANDROID_RES -> normalizeAndroidString(xmlUnescaped)
-                ResourceKind.COMPOSE_RESOURCES -> xmlUnescaped
+                ResourceKind.ANDROID_RES -> normalizeAndroidString(xmlSanitized)
+                ResourceKind.COMPOSE_RESOURCES -> xmlSanitized
             }
         }
 
@@ -160,7 +203,7 @@ class TranslationApplier(private val project: Project) {
 
         internal fun upsertStringText(currentText: String, key: String, translatedText: String): String {
             val escapedKey = StringUtil.escapeXmlEntities(key)
-            val escapedValue = StringUtil.escapeXmlEntities(translatedText)
+            val escapedValue = escapeXmlTextNode(translatedText)
             val existingTagPattern = Regex(
                 pattern = """<string(\s+[^>]*?\bname\s*=\s*"${Regex.escape(escapedKey)}"[^>]*)>.*?</string>""",
                 options = setOf(RegexOption.DOT_MATCHES_ALL),
@@ -188,6 +231,79 @@ class TranslationApplier(private val project: Project) {
             } else {
                 "<resources>\n$insert</resources>\n"
             }
+        }
+
+        internal fun removeStringText(currentText: String, key: String): Pair<String, Boolean> {
+            val escapedKey = StringUtil.escapeXmlEntities(key)
+            val existingTagPattern = Regex(
+                pattern = """<string(\s+[^>]*?\bname\s*=\s*"${Regex.escape(escapedKey)}"[^>]*)>.*?</string>\s*\r?\n?""",
+                options = setOf(RegexOption.DOT_MATCHES_ALL),
+            )
+            val existingTagMatch = existingTagPattern.find(currentText) ?: return currentText to false
+            return currentText.removeRange(existingTagMatch.range) to true
+        }
+
+        // In XML text nodes we only need to escape &, <, and >.
+        // Keep quotes/apostrophes literal to avoid noisy entities in generated resources.
+        private fun escapeXmlTextNode(value: String): String {
+            if (value.isEmpty()) {
+                return value
+            }
+            val out = StringBuilder(value.length + 8)
+            for (ch in value) {
+                when (ch) {
+                    '&' -> out.append("&amp;")
+                    '<' -> out.append("&lt;")
+                    '>' -> out.append("&gt;")
+                    else -> out.append(ch)
+                }
+            }
+            return out.toString()
+        }
+
+        private fun stripInvalidXmlChars(value: String): String {
+            if (value.isEmpty()) {
+                return value
+            }
+            val out = StringBuilder(value.length)
+            var index = 0
+            while (index < value.length) {
+                val codePoint = Character.codePointAt(value, index)
+                val isAllowed = codePoint == 0x9 ||
+                        codePoint == 0xA ||
+                        codePoint == 0xD ||
+                        codePoint in 0x20..0xD7FF ||
+                        codePoint in 0xE000..0xFFFD ||
+                        codePoint in 0x10000..0x10FFFF
+                if (isAllowed) {
+                    out.appendCodePoint(codePoint)
+                }
+                index += Character.charCount(codePoint)
+            }
+            return out.toString()
+        }
+
+        private fun normalizeProblematicWhitespace(value: String): String {
+            if (value.isEmpty()) {
+                return value
+            }
+            val out = StringBuilder(value.length)
+            var index = 0
+            while (index < value.length) {
+                val codePoint = Character.codePointAt(value, index)
+                when (codePoint) {
+                    0x00A0, // NO-BREAK SPACE
+                    0x202F, // NARROW NO-BREAK SPACE
+                    0x2007, // FIGURE SPACE
+                    -> out.append(' ')
+                    0x2060, // WORD JOINER
+                    0xFEFF, // ZERO WIDTH NO-BREAK SPACE / BOM
+                    -> Unit
+                    else -> out.appendCodePoint(codePoint)
+                }
+                index += Character.charCount(codePoint)
+            }
+            return out.toString()
         }
     }
 }

@@ -20,6 +20,7 @@ import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.ScanOptions
 import de.aarondietz.localizepipe.model.ScanScope
 import de.aarondietz.localizepipe.model.StringEntryRow
+import de.aarondietz.localizepipe.model.TranslationDeleteTarget
 import de.aarondietz.localizepipe.scan.StringsXmlScanner
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
@@ -153,6 +154,10 @@ class LocalizePipeToolWindowController(
                         checkCanceled(indicator)
                         false
                     }
+                    val deletionTargets = scanner.scanDeletionTargets(options) {
+                        checkCanceled(indicator)
+                        false
+                    }
                     val oldRowsById = synchronized(lock) { state.rows.associateBy { it.id } }
 
                     val mergedRows = scanResult.rows.map { scannedRow ->
@@ -175,6 +180,7 @@ class LocalizePipeToolWindowController(
                     mutateState {
                         copy(
                             rows = mergedRows,
+                            deleteTargets = deletionTargets,
                             detectedLocales = scanResult.detectedLocales,
                             selectedRowId = selectedRowId?.takeIf { id -> mergedRows.any { it.id == id } }
                                 ?: mergedRows.firstOrNull()?.id,
@@ -358,11 +364,6 @@ class LocalizePipeToolWindowController(
         LOG.info(
             "Starting translation (rows=${rowsToTranslate.size}, provider=${settings.providerType}, model=${settings.activeModel()})",
         )
-        val expectedRowsToApplyCount = (rowsToTranslate.asSequence() + rowsToWrite.asSequence())
-            .map { it.id }
-            .toSet()
-            .size
-        val estimatedTotalWork = (rowsToTranslate.size + expectedRowsToApplyCount).coerceAtLeast(1)
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe translating", false) {
             override fun run(indicator: ProgressIndicator) {
@@ -384,8 +385,6 @@ class LocalizePipeToolWindowController(
                                 phaseLabel = "Translating",
                                 processedCount = processedCount,
                                 phaseTotal = rowsToTranslate.size,
-                                completedWorkBefore = 0,
-                                totalWork = estimatedTotalWork,
                             )
                             val partialById = partialTranslatedRows.associateBy { it.id }
 
@@ -441,15 +440,11 @@ class LocalizePipeToolWindowController(
                     }
 
                     checkCanceled(indicator)
-                    updateProgressIndicator(
-                        indicator = indicator,
-                        phaseTitle = "LocalizePipe writing",
-                        phaseLabel = "Writing",
-                        processedCount = 0,
-                        phaseTotal = rowsToApply.size,
-                        completedWorkBefore = rowsToTranslate.size,
-                        totalWork = estimatedTotalWork,
-                    )
+                    indicator.isIndeterminate = false
+                    indicator.text = "LocalizePipe writing"
+                    indicator.text2 = "Writing 0 / ${rowsToApply.size}"
+                    // Keep translation progress at 100% once all rows are translated.
+                    indicator.fraction = 1.0
                     mutateState {
                         copy(
                             statusText = "Writing",
@@ -465,15 +460,11 @@ class LocalizePipeToolWindowController(
                         rows = rowsToApply,
                         onProgress = { processedCount, appliedCount ->
                             checkCanceled(indicator)
-                            updateProgressIndicator(
-                                indicator = indicator,
-                                phaseTitle = "LocalizePipe writing",
-                                phaseLabel = "Writing",
-                                processedCount = processedCount,
-                                phaseTotal = rowsToApply.size,
-                                completedWorkBefore = rowsToTranslate.size,
-                                totalWork = estimatedTotalWork,
-                            )
+                            indicator.isIndeterminate = false
+                            indicator.text = "LocalizePipe writing"
+                            indicator.text2 = "Writing $processedCount / ${rowsToApply.size}"
+                            // Writing is post-translation work; keep translation completion visual at 100%.
+                            indicator.fraction = 1.0
                             mutateState {
                                 copy(
                                     statusText = "Writing",
@@ -519,6 +510,111 @@ class LocalizePipeToolWindowController(
                         )
                     }
                     LOG.info("Translation cancelled")
+                    throw cancelled
+                } finally {
+                    clearCurrentProgressIndicator(indicator)
+                    runQueuedRescanIfNeeded()
+                }
+            }
+        })
+    }
+
+    fun deleteTranslationsForTarget(target: TranslationDeleteTarget) {
+        if (isBusy()) {
+            LOG.debug("Delete ignored because another operation is in progress")
+            mutateState { copy(lastMessage = "Another operation is already running") }
+            return
+        }
+        synchronized(lock) {
+            cancellationRequested = false
+        }
+
+        val totalLocales = target.localeEntries.size
+        if (totalLocales == 0) {
+            mutateState { copy(lastMessage = "No translated locale entries found for key '${target.key}'") }
+            return
+        }
+
+        mutateState {
+            copy(
+                statusText = "Deleting",
+                isBusy = true,
+                activeOperation = UiOperation.APPLYING,
+                progressCurrent = 0,
+                progressTotal = totalLocales,
+                lastMessage = "Deleting translations for '${target.key}' (0 / $totalLocales)",
+            )
+        }
+        LOG.info("Deleting translations for key='${target.key}' across $totalLocales locale files")
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe deleting translations", false) {
+            override fun run(indicator: ProgressIndicator) {
+                setCurrentProgressIndicator(indicator)
+                try {
+                    checkCanceled(indicator)
+                    indicator.isIndeterminate = false
+                    indicator.fraction = 0.0
+                    indicator.text = "LocalizePipe deleting translations"
+                    indicator.text2 = "Deleting 0 / $totalLocales"
+
+                    val deleteResult = applier.deleteTranslations(
+                        target = target,
+                        onProgress = { processedCount, deletedCount ->
+                            checkCanceled(indicator)
+                            updateProgressIndicator(
+                                indicator = indicator,
+                                phaseTitle = "LocalizePipe deleting translations",
+                                phaseLabel = "Deleting",
+                                processedCount = processedCount,
+                                phaseTotal = totalLocales,
+                            )
+                            mutateState {
+                                copy(
+                                    statusText = "Deleting",
+                                    isBusy = true,
+                                    activeOperation = UiOperation.APPLYING,
+                                    progressCurrent = processedCount,
+                                    progressTotal = totalLocales,
+                                    lastMessage = "Deleting translations for '${target.key}' ($processedCount / $totalLocales, deleted $deletedCount)",
+                                )
+                            }
+                        },
+                        shouldCancel = {
+                            checkCanceled(indicator)
+                            false
+                        },
+                    )
+
+                    mutateState {
+                        copy(
+                            statusText = if (deleteResult.errors.isEmpty()) "Idle" else "Errors",
+                            isBusy = false,
+                            activeOperation = UiOperation.IDLE,
+                            progressCurrent = 0,
+                            progressTotal = 0,
+                            lastMessage = if (deleteResult.errors.isEmpty()) {
+                                "Deleted translations for '${target.key}' in ${deleteResult.appliedCount} locale files"
+                            } else {
+                                "Deleted with errors for '${target.key}': ${deleteResult.appliedCount} deleted, ${deleteResult.errors.size} errors"
+                            },
+                        )
+                    }
+                    LOG.info(
+                        "Delete completed for key='${target.key}' (deleted=${deleteResult.appliedCount}, errors=${deleteResult.errors.size})",
+                    )
+                    scheduleRescan(100)
+                } catch (cancelled: ProcessCanceledException) {
+                    mutateState {
+                        copy(
+                            statusText = "Idle",
+                            isBusy = false,
+                            activeOperation = UiOperation.IDLE,
+                            progressCurrent = 0,
+                            progressTotal = 0,
+                            lastMessage = "Delete cancelled",
+                        )
+                    }
+                    LOG.info("Delete cancelled for key='${target.key}'")
                     throw cancelled
                 } finally {
                     clearCurrentProgressIndicator(indicator)
@@ -657,6 +753,7 @@ data class ToolWindowUiState(
     val scanScope: ScanScope = ScanScope.WHOLE_PROJECT,
     val includeAndroidResources: Boolean = true,
     val includeComposeResources: Boolean = true,
+    val deleteTargets: List<TranslationDeleteTarget> = emptyList(),
     val detectedLocales: Set<String> = emptySet(),
     val rows: List<StringEntryRow> = emptyList(),
     val selectedRowId: String? = null,

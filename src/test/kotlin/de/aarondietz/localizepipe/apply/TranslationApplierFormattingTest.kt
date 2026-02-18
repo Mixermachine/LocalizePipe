@@ -66,9 +66,75 @@ class TranslationApplierFormattingTest {
         )
 
         assertTrue(
-            Regex("""<string name="ppos_option_nfc_position">Position de l\\(?:&apos;|&#39;|')image NFC</string>""")
+            Regex("""<string name="ppos_option_nfc_position">Position de l\\'image NFC</string>""")
                 .containsMatchIn(updated),
         )
         assertFalse(updated.contains(">old</string>"))
+    }
+
+    @Test
+    fun upsertStringTextKeepsLiteralQuotesAndApostrophesInTextNode() {
+        val updated = TranslationApplier.upsertStringText(
+            currentText = "<resources>\n</resources>\n",
+            key = "delete_student_confirm",
+            translatedText = "Supprimer \"%1\$s\" ? L\\'etudiant",
+        )
+
+        assertTrue(updated.contains("<string name=\"delete_student_confirm\">Supprimer \"%1\$s\" ? L\\'etudiant</string>"))
+        assertFalse(updated.contains("&quot;"))
+        assertFalse(updated.contains("&apos;"))
+        assertFalse(updated.contains("&#39;"))
+    }
+
+    @Test
+    fun normalizeForWriteStripsInvalidXmlControlChars() {
+        val normalized = TranslationApplier.normalizeForWrite(
+            translatedText = "Bon\u0000jour\u0007 !",
+            kind = ResourceKind.COMPOSE_RESOURCES,
+        )
+
+        assertEquals("Bonjour !", normalized)
+    }
+
+    @Test
+    fun removeStringTextDeletesExistingStringEntry() {
+        val input = """
+            <resources>
+                <string name="delete_me">Bonjour</string>
+                <string name="keep_me">Salut</string>
+            </resources>
+        """.trimIndent()
+
+        val (updated, deleted) = TranslationApplier.removeStringText(
+            currentText = input,
+            key = "delete_me",
+        )
+
+        assertTrue(deleted)
+        assertFalse(updated.contains("name=\"delete_me\""))
+        assertTrue(updated.contains("name=\"keep_me\""))
+    }
+
+    @Test
+    fun removeStringTextReturnsUnchangedWhenMissing() {
+        val input = "<resources>\n    <string name=\"keep_me\">Salut</string>\n</resources>\n"
+
+        val (updated, deleted) = TranslationApplier.removeStringText(
+            currentText = input,
+            key = "missing_key",
+        )
+
+        assertFalse(deleted)
+        assertEquals(input, updated)
+    }
+
+    @Test
+    fun normalizeForWriteConvertsNbspVariantsToRegularSpaces() {
+        val normalized = TranslationApplier.normalizeForWrite(
+            translatedText = "Supprimer \"%1\$s\"\u00A0? Total\u202F: %1\$d\u2007Mo",
+            kind = ResourceKind.COMPOSE_RESOURCES,
+        )
+
+        assertEquals("Supprimer \"%1\$s\" ? Total : %1\$d Mo", normalized)
     }
 }

@@ -38,10 +38,20 @@ class TranslationOutputValidatorTest {
     }
 
     @Test
-    fun rejectsXmlUnsafeText() {
+    fun acceptsRawAmpersandInText() {
         val result = TranslationOutputValidator.validate(
             baseText = "Fish and chips",
             translatedText = "Poisson & frites",
+        )
+
+        assertTrue(result.isValid)
+    }
+
+    @Test
+    fun rejectsMalformedXmlTags() {
+        val result = TranslationOutputValidator.validate(
+            baseText = "Settings",
+            translatedText = "<b>Parametres",
         )
 
         assertFalse(result.isValid)

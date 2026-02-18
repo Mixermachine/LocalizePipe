@@ -19,6 +19,7 @@ data class ValidationResult(
 object TranslationOutputValidator {
     private val androidPlaceholderRegex = Regex("%(?:\\d+\\$)?[#+ 0,(<]*\\d*(?:\\.\\d+)?[a-zA-Z]")
     private val simpleXmlTagRegex = Regex("</?[A-Za-z][A-Za-z0-9]*>")
+    private val bareAmpersandRegex = Regex("&(?!#\\d+;|#x[0-9A-Fa-f]+;|[A-Za-z][A-Za-z0-9]+;)")
 
     fun validate(baseText: String, translatedText: String): ValidationResult {
         val errors = linkedSetOf<ValidationError>()
@@ -55,15 +56,44 @@ object TranslationOutputValidator {
         simpleXmlTagRegex.findAll(value).map { it.value }.toList()
 
     private fun isXmlSafe(translatedText: String): Boolean {
+        val sanitized = stripInvalidXmlChars(translatedText)
+        return canParseWrapped(sanitized) || canParseWrapped(escapeBareAmpersands(sanitized))
+    }
+
+    private fun canParseWrapped(value: String): Boolean {
         return try {
             val factory = DocumentBuilderFactory.newInstance()
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
             val builder = factory.newDocumentBuilder()
-            val wrappedXml = "<resources><string name=\"x\">$translatedText</string></resources>"
+            val wrappedXml = "<resources><string name=\"x\">$value</string></resources>"
             builder.parse(InputSource(StringReader(wrappedXml)))
             true
         } catch (_: Throwable) {
             false
         }
+    }
+
+    private fun escapeBareAmpersands(value: String): String = value.replace(bareAmpersandRegex, "&amp;")
+
+    private fun stripInvalidXmlChars(value: String): String {
+        if (value.isEmpty()) {
+            return value
+        }
+        val out = StringBuilder(value.length)
+        var index = 0
+        while (index < value.length) {
+            val codePoint = Character.codePointAt(value, index)
+            val isAllowed = codePoint == 0x9 ||
+                    codePoint == 0xA ||
+                    codePoint == 0xD ||
+                    codePoint in 0x20..0xD7FF ||
+                    codePoint in 0xE000..0xFFFD ||
+                    codePoint in 0x10000..0x10FFFF
+            if (isAllowed) {
+                out.appendCodePoint(codePoint)
+            }
+            index += Character.charCount(codePoint)
+        }
+        return out.toString()
     }
 }

@@ -89,6 +89,77 @@ class StringsXmlScanner(private val project: Project) {
         }
     }
 
+    fun scanDeletionTargets(
+        options: ScanOptions,
+        shouldCancel: () -> Boolean = { false },
+    ): List<TranslationDeleteTarget> {
+        return ReadAction.compute<List<TranslationDeleteTarget>, RuntimeException> {
+            checkCanceled(shouldCancel)
+            val files = FilenameIndex.getVirtualFilesByName(
+                "strings.xml",
+                GlobalSearchScope.projectScope(project),
+            )
+
+            val localizedFiles = files.mapNotNull { file -> classify(file) }
+                .filter { includeByResourceKind(it.kind, options) }
+                .filter { includeByScope(it.moduleName, options) }
+
+            val grouped = localizedFiles.groupBy { GroupKey(it.resourceRootPath, it.kind, it.moduleName) }
+            val targets = mutableListOf<TranslationDeleteTarget>()
+
+            for ((groupKey, groupFiles) in grouped) {
+                checkCanceled(shouldCancel)
+                val baseFile = groupFiles.firstOrNull { it.folderName == "values" } ?: continue
+                val baseMap = readStringMap(baseFile.file)
+                if (baseMap.isEmpty()) {
+                    continue
+                }
+
+                val localeFiles = groupFiles.filter { it.normalizedLocaleTag != null }
+                if (localeFiles.isEmpty()) {
+                    continue
+                }
+
+                val localizedMaps = localeFiles.associateWith { localizedFile -> readStringMap(localizedFile.file) }
+                for ((key, baseText) in baseMap.toSortedMap()) {
+                    checkCanceled(shouldCancel)
+                    val localeEntries = localeFiles.mapNotNull { localeFile ->
+                        val hasTranslationForKey = localizedMaps[localeFile]?.containsKey(key) == true
+                        if (!hasTranslationForKey) {
+                            return@mapNotNull null
+                        }
+                        val localeTag = localeFile.normalizedLocaleTag ?: return@mapNotNull null
+                        TranslationDeleteLocaleEntry(
+                            localeTag = localeTag,
+                            localeQualifierRaw = localeFile.qualifierRaw,
+                            localeFilePath = localeFile.file.path,
+                        )
+                    }.sortedBy { it.localeTag }
+
+                    if (localeEntries.isEmpty()) {
+                        continue
+                    }
+
+                    targets += TranslationDeleteTarget(
+                        id = "${groupKey.resourceRootPath}|${groupKey.moduleName.orEmpty()}|$key",
+                        key = key,
+                        baseText = baseText,
+                        resourceRootPath = groupKey.resourceRootPath,
+                        moduleName = groupKey.moduleName,
+                        originKind = groupKey.kind,
+                        localeEntries = localeEntries,
+                    )
+                }
+            }
+
+            targets.sortedWith(
+                compareBy<TranslationDeleteTarget> { it.key }
+                    .thenBy { it.moduleName ?: "" }
+                    .thenBy { it.resourceRootPath },
+            )
+        }
+    }
+
     private fun includeByResourceKind(kind: ResourceKind, options: ScanOptions): Boolean {
         return when (kind) {
             ResourceKind.ANDROID_RES -> options.includeAndroidResources

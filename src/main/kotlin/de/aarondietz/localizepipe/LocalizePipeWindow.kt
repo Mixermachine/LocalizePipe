@@ -3,6 +3,7 @@ package de.aarondietz.localizepipe
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -12,6 +13,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindow
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.service
 import com.intellij.openapi.options.ShowSettingsUtil
@@ -22,6 +24,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.ScanScope
+import de.aarondietz.localizepipe.model.TranslationDeleteTarget
 import de.aarondietz.localizepipe.settings.LocalizePipeSettingsConfigurable
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
@@ -73,6 +76,8 @@ private fun LocalizePipeToolWindowContent(
     disposable: Disposable,
 ) {
     var state by remember { mutableStateOf(controller.snapshot()) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var selectedDeleteTargetId by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(disposable) {
         val unsubscribe = controller.addStateListener { state = controller.snapshot() }
@@ -119,6 +124,7 @@ private fun LocalizePipeToolWindowContent(
                 row.status == RowStatus.IDENTICAL ||
                 (!row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR)
     }
+    val canDeleteTranslations = state.deleteTargets.isNotEmpty()
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -134,6 +140,15 @@ private fun LocalizePipeToolWindowContent(
                 onToggleScope = controller::toggleScope,
                 onRescan = controller::rescan,
                 onTranslate = controller::translate,
+                onDeleteTranslations = {
+                    if (!canDeleteTranslations) {
+                        return@TopBar
+                    }
+                    selectedDeleteTargetId = selectedDeleteTargetId
+                        ?.takeIf { selectedId -> state.deleteTargets.any { it.id == selectedId } }
+                        ?: state.deleteTargets.firstOrNull()?.id
+                    showDeleteDialog = true
+                },
                 onCancel = controller::cancelCurrentOperation,
                 onOpenSettings = {
                     ShowSettingsUtil.getInstance()
@@ -141,6 +156,7 @@ private fun LocalizePipeToolWindowContent(
                     controller.scheduleRescan(100)
                 },
                 canTranslate = canTranslate,
+                canDeleteTranslations = canDeleteTranslations,
             )
 
             SectionDivider()
@@ -286,6 +302,22 @@ private fun LocalizePipeToolWindowContent(
                 .align(Alignment.CenterEnd)
                 .fillMaxHeight(),
         )
+
+        if (showDeleteDialog) {
+            DeleteTranslationsDialog(
+                targets = state.deleteTargets,
+                selectedTargetId = selectedDeleteTargetId,
+                onSelectTarget = { selectedDeleteTargetId = it },
+                onCancel = { showDeleteDialog = false },
+                onConfirmDelete = { confirmedTargetId ->
+                    val target = state.deleteTargets.firstOrNull { it.id == confirmedTargetId }
+                    if (target != null) {
+                        showDeleteDialog = false
+                        controller.deleteTranslationsForTarget(target)
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -342,9 +374,11 @@ private fun TopBar(
     onToggleScope: () -> Unit,
     onRescan: () -> Unit,
     onTranslate: () -> Unit,
+    onDeleteTranslations: () -> Unit,
     onCancel: () -> Unit,
     onOpenSettings: () -> Unit,
     canTranslate: Boolean,
+    canDeleteTranslations: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FlowRow(
@@ -374,6 +408,13 @@ private fun TopBar(
                 Text(if (state.isBusy) "Translate + Write..." else "Translate + Write")
             }
             TooltipButton(
+                tooltip = "Delete translated entries for one selected key across all target locale files.",
+                onClick = onDeleteTranslations,
+                enabled = canDeleteTranslations && !state.isBusy,
+            ) {
+                Text("Delete Translation")
+            }
+            TooltipButton(
                 tooltip = "Request cancellation of the currently running operation.",
                 onClick = onCancel,
                 enabled = state.isBusy,
@@ -386,6 +427,149 @@ private fun TopBar(
                 enabled = !state.isBusy,
             ) {
                 Text("Settings")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteTranslationsDialog(
+    targets: List<TranslationDeleteTarget>,
+    selectedTargetId: String?,
+    onSelectTarget: (String) -> Unit,
+    onCancel: () -> Unit,
+    onConfirmDelete: (String) -> Unit,
+) {
+    var filterText by remember(targets) { mutableStateOf("") }
+    val filteredTargets = remember(targets, filterText) {
+        val query = filterText.trim()
+        if (query.isBlank()) {
+            targets
+        } else {
+            targets.filter { target ->
+                target.key.contains(query, ignoreCase = true) ||
+                        target.baseText.contains(query, ignoreCase = true) ||
+                        (target.moduleName ?: "").contains(query, ignoreCase = true) ||
+                        target.resourceRootPath.contains(query, ignoreCase = true)
+            }
+        }
+    }
+    val selectedId = selectedTargetId?.takeIf { selected -> filteredTargets.any { it.id == selected } }
+        ?: filteredTargets.firstOrNull()?.id
+    if (selectedId != null && selectedId != selectedTargetId) {
+        LaunchedEffect(selectedId) {
+            onSelectTarget(selectedId)
+        }
+    }
+    val listScrollState = rememberScrollState()
+
+    DialogWindow(
+        onCloseRequest = onCancel,
+        title = "Delete Translations",
+    ) {
+        Column(
+            modifier = Modifier
+                .width(840.dp)
+                .heightIn(max = 560.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Select a key. The key will be deleted from all target locale files, but kept in source language.")
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0x55808080), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                if (filterText.isBlank()) {
+                    Text("Filter by key, text, module, or path.", color = Color(0xFF909090))
+                }
+                BasicTextField(
+                    value = filterText,
+                    onValueChange = { filterText = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp)
+                    .border(1.dp, Color(0x55808080), RoundedCornerShape(4.dp))
+                    .padding(end = 10.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(listScrollState)
+                        .padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (filteredTargets.isEmpty()) {
+                        Text("No translated keys found for this filter.")
+                    } else {
+                        filteredTargets.forEach { target ->
+                            val isSelected = selectedId == target.id
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        color = if (isSelected) Color(0x1A4C8BF5) else Color.Transparent,
+                                        shape = RoundedCornerShape(4.dp),
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) Color(0x664C8BF5) else Color(0x33808080),
+                                        shape = RoundedCornerShape(4.dp),
+                                    )
+                                    .clickable { onSelectTarget(target.id) }
+                                    .padding(horizontal = 8.dp, vertical = 7.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(target.key)
+                                Text("Locales: ${target.localeEntries.size} | Module: ${target.moduleName ?: "-"}")
+                                Text(
+                                    "Path: ${target.resourceRootPath}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    "Base: ${target.baseText}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+                VerticalScrollbar(
+                    adapter = rememberScrollbarAdapter(listScrollState),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight(),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onCancel) {
+                        Text("Cancel")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (selectedId != null) {
+                                onConfirmDelete(selectedId)
+                            }
+                        },
+                        enabled = selectedId != null,
+                    ) {
+                        Text("Delete")
+                    }
+                }
             }
         }
     }
