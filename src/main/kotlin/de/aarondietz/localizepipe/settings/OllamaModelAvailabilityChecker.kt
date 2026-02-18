@@ -40,15 +40,21 @@ internal object OllamaModelAvailabilityChecker {
             )
         }
 
-        val modelNames = parseModelNames(response.body())
-        if (modelNames.isEmpty()) {
+        val parsedTags = parseTagsPayload(response.body())
+        if (!parsedTags.validShape) {
             return OllamaModelCheckResult(
                 status = OllamaModelCheckStatus.PARSE_ERROR,
-                message = "Ollama returned no model tags. Make sure Ollama is running locally.",
+                message = "Ollama returned an unexpected /api/tags response payload.",
+            )
+        }
+        if (parsedTags.modelNames.isEmpty()) {
+            return OllamaModelCheckResult(
+                status = OllamaModelCheckStatus.MISSING,
+                message = "No local Ollama models were found. Run `ollama pull $trimmedModel`.",
             )
         }
 
-        return if (isModelAvailable(trimmedModel, modelNames)) {
+        return if (isModelAvailable(trimmedModel, parsedTags.modelNames)) {
             OllamaModelCheckResult(
                 status = OllamaModelCheckStatus.AVAILABLE,
                 message = "Model '$trimmedModel' is available locally in Ollama.",
@@ -128,15 +134,7 @@ internal object OllamaModelAvailabilityChecker {
     }
 
     internal fun parseModelNames(rawJson: String): Set<String> {
-        return runCatching {
-            val root = json.parseToJsonElement(rawJson).jsonObject
-            root["models"]
-                ?.jsonArray
-                ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.content?.trim() }
-                ?.filter { it.isNotBlank() }
-                ?.toSet()
-                ?: emptySet()
-        }.getOrDefault(emptySet())
+        return parseTagsPayload(rawJson).modelNames
     }
 
     internal fun isModelAvailable(requestedModel: String, availableModels: Set<String>): Boolean {
@@ -178,6 +176,21 @@ internal object OllamaModelAvailabilityChecker {
                 .build()
                 .send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
         }
+    }
+
+    private fun parseTagsPayload(rawJson: String): ParsedTagsPayload {
+        return runCatching {
+            val root = json.parseToJsonElement(rawJson).jsonObject
+            val modelsArray = root["models"] as? JsonArray
+                ?: return ParsedTagsPayload(validShape = false, modelNames = emptySet())
+
+            val modelNames = modelsArray
+                .mapNotNull { element -> element.jsonObject["name"]?.jsonPrimitive?.content?.trim() }
+                .filter { it.isNotBlank() }
+                .toSet()
+
+            ParsedTagsPayload(validShape = true, modelNames = modelNames)
+        }.getOrDefault(ParsedTagsPayload(validShape = false, modelNames = emptySet()))
     }
 
     private fun executeStreamingRequest(
@@ -294,6 +307,11 @@ internal enum class OllamaModelPullStatus {
 internal data class OllamaPullProgressUpdate(
     val status: String,
     val fraction: Double?,
+)
+
+private data class ParsedTagsPayload(
+    val validShape: Boolean,
+    val modelNames: Set<String>,
 )
 
 internal data class ParsedPullProgressLine(
