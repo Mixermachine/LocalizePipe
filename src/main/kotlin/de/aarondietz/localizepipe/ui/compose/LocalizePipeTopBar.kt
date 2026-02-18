@@ -32,10 +32,12 @@ internal fun LocalizePipeTopBar(
     onRescan: () -> Unit,
     onTranslate: () -> Unit,
     onDeleteTranslations: () -> Unit,
+    onAddLanguage: () -> Unit,
     onCancel: () -> Unit,
     onOpenSettings: () -> Unit,
     canTranslate: Boolean,
     canDeleteTranslations: Boolean,
+    canAddLanguage: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(TopBarSpacing)) {
         FlowRow(
@@ -70,6 +72,13 @@ internal fun LocalizePipeTopBar(
                 enabled = canDeleteTranslations && !state.isBusy,
             ) {
                 Text("Delete Translation")
+            }
+            TooltipButton(
+                tooltip = "Add a new target language and create locale files for selected resource roots.",
+                onClick = onAddLanguage,
+                enabled = canAddLanguage && !state.isBusy,
+            ) {
+                Text("Add Language")
             }
             TooltipButton(
                 tooltip = "Request cancellation of the currently running operation.",

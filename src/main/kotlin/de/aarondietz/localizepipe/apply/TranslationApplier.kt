@@ -9,9 +9,11 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.psi.PsiManager
 import com.intellij.psi.xml.XmlFile
+import de.aarondietz.localizepipe.model.LanguageAddTarget
 import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.model.StringEntryRow
 import de.aarondietz.localizepipe.model.TranslationDeleteTarget
+import de.aarondietz.localizepipe.scan.LocaleQualifierUtil
 
 class TranslationApplier(private val project: Project) {
     fun apply(
@@ -94,6 +96,66 @@ class TranslationApplier(private val project: Project) {
 
         LOG.info("Delete operation completed (processed=$processedCount, deleted=$deletedCount, errors=${errors.size})")
         return ApplyResult(appliedCount = deletedCount, errors = errors)
+    }
+
+    fun addLanguage(
+        localeTag: String,
+        targets: List<LanguageAddTarget>,
+        onProgress: (processedCount: Int, createdCount: Int) -> Unit = { _, _ -> },
+        shouldCancel: () -> Boolean = { false },
+    ): AddLanguageResult {
+        val errors = mutableListOf<String>()
+        val normalizedLocaleTag = localeTag.replace('_', '-').trim()
+        val folderName = "values-${LocaleQualifierUtil.localeTagToQualifier(normalizedLocaleTag)}".removeSuffix("-")
+        var createdCount = 0
+        var skippedCount = 0
+        var processedCount = 0
+
+        LOG.info("Add language operation started (locale=$normalizedLocaleTag, targets=${targets.size})")
+
+        WriteCommandAction.writeCommandAction(project)
+            .withName("Add Translation Language")
+            .run<Throwable> {
+                for (target in targets) {
+                    if (shouldCancel()) {
+                        throw ProcessCanceledException()
+                    }
+                    try {
+                        val root = LocalFileSystem.getInstance().findFileByPath(target.resourceRootPath)
+                            ?: error("Resource root not found: ${target.resourceRootPath}")
+                        val localeFolder = root.findChild(folderName) ?: root.createChildDirectory(this, folderName)
+                        val localeFile = localeFolder.findChild("strings.xml")
+                        if (localeFile == null) {
+                            val createdFile = localeFolder.createChildData(this, "strings.xml")
+                            VfsUtil.saveText(createdFile, "<resources>\n</resources>\n")
+                            createdCount++
+                        } else {
+                            if (localeFile.length == 0L) {
+                                VfsUtil.saveText(localeFile, "<resources>\n</resources>\n")
+                            }
+                            skippedCount++
+                        }
+                    } catch (error: Throwable) {
+                        LOG.warn(
+                            "Failed to add locale='$normalizedLocaleTag' in resource root='${target.resourceRootPath}'",
+                            error,
+                        )
+                        errors += "${target.resourceRootPath}: ${error.message}"
+                    }
+
+                    processedCount++
+                    onProgress(processedCount, createdCount)
+                }
+            }
+
+        LOG.info(
+            "Add language operation completed (processed=$processedCount, created=$createdCount, skipped=$skippedCount, errors=${errors.size})",
+        )
+        return AddLanguageResult(
+            createdCount = createdCount,
+            skippedCount = skippedCount,
+            errors = errors,
+        )
     }
 
     private fun ensureLocaleFile(row: StringEntryRow) =
@@ -310,6 +372,12 @@ class TranslationApplier(private val project: Project) {
 
 data class ApplyResult(
     val appliedCount: Int,
+    val errors: List<String>,
+)
+
+data class AddLanguageResult(
+    val createdCount: Int,
+    val skippedCount: Int,
     val errors: List<String>,
 )
 

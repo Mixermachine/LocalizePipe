@@ -28,6 +28,7 @@ import com.intellij.openapi.project.Project
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.settings.LocalizePipeSettingsConfigurable
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
+import de.aarondietz.localizepipe.ui.dialog.chooseAddLanguageRequest
 import de.aarondietz.localizepipe.ui.dialog.chooseDeleteTranslationTarget
 import de.aarondietz.localizepipe.ui.toolwindow.LocalizePipeToolWindowController
 import org.jetbrains.jewel.ui.component.Text
@@ -45,6 +46,8 @@ internal fun LocalizePipeToolWindowContent(
 ) {
     var state by remember { mutableStateOf(controller.snapshot()) }
     var selectedDeleteTargetId by remember { mutableStateOf<String?>(null) }
+    var selectedLocaleTag by remember { mutableStateOf<String?>(null) }
+    var selectedLanguageTargetIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     DisposableEffect(disposable) {
         val unsubscribe = controller.addStateListener { state = controller.snapshot() }
@@ -65,6 +68,7 @@ internal fun LocalizePipeToolWindowContent(
                 (!row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR)
     }
     val canDeleteTranslations = state.deleteTargets.isNotEmpty()
+    val canAddLanguage = state.languageTargets.isNotEmpty()
     val pageVerticalScroll = rememberScrollState()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -96,6 +100,23 @@ internal fun LocalizePipeToolWindowContent(
                     selectedDeleteTargetId = selectedTarget.id
                     controller.deleteTranslationsForTarget(selectedTarget)
                 },
+                onAddLanguage = {
+                    if (!canAddLanguage) {
+                        return@LocalizePipeTopBar
+                    }
+                    val request = chooseAddLanguageRequest(
+                        project = project,
+                        targets = state.languageTargets,
+                        preselectedLocaleTag = selectedLocaleTag,
+                        preselectedTargetIds = selectedLanguageTargetIds,
+                    ) ?: return@LocalizePipeTopBar
+                    selectedLocaleTag = request.localeTag
+                    selectedLanguageTargetIds = request.targetIds
+                    controller.addLanguage(
+                        localeTag = request.localeTag,
+                        targetIds = request.targetIds,
+                    )
+                },
                 onCancel = controller::cancelCurrentOperation,
                 onOpenSettings = {
                     ShowSettingsUtil.getInstance()
@@ -104,6 +125,7 @@ internal fun LocalizePipeToolWindowContent(
                 },
                 canTranslate = canTranslate,
                 canDeleteTranslations = canDeleteTranslations,
+                canAddLanguage = canAddLanguage,
             )
 
             SectionDivider()

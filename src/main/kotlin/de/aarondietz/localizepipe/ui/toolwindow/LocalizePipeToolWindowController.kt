@@ -16,6 +16,7 @@ import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.util.concurrency.AppExecutorUtil
 import de.aarondietz.localizepipe.apply.TranslationApplier
+import de.aarondietz.localizepipe.model.LanguageAddTarget
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.ScanOptions
 import de.aarondietz.localizepipe.model.ScanScope
@@ -158,6 +159,10 @@ class LocalizePipeToolWindowController(
                         checkCanceled(indicator)
                         false
                     }
+                    val languageTargets = scanner.scanLanguageTargets(options) {
+                        checkCanceled(indicator)
+                        false
+                    }
                     val oldRowsById = synchronized(lock) { state.rows.associateBy { it.id } }
 
                     val mergedRows = scanResult.rows.map { scannedRow ->
@@ -181,6 +186,7 @@ class LocalizePipeToolWindowController(
                         copy(
                             rows = mergedRows,
                             deleteTargets = deletionTargets,
+                            languageTargets = languageTargets,
                             detectedLocales = scanResult.detectedLocales,
                             selectedRowId = selectedRowId?.takeIf { id -> mergedRows.any { it.id == id } }
                                 ?: mergedRows.firstOrNull()?.id,
@@ -624,6 +630,121 @@ class LocalizePipeToolWindowController(
         })
     }
 
+    fun addLanguage(localeTag: String, targetIds: Set<String>) {
+        if (isBusy()) {
+            LOG.debug("Add language ignored because another operation is in progress")
+            mutateState { copy(lastMessage = "Another operation is already running") }
+            return
+        }
+        synchronized(lock) {
+            cancellationRequested = false
+        }
+
+        val normalizedLocaleTag = localeTag.replace('_', '-').trim()
+        val targets = synchronized(lock) {
+            state.languageTargets.filter { it.id in targetIds }
+        }
+        if (normalizedLocaleTag.isBlank()) {
+            mutateState { copy(lastMessage = "Locale tag must not be empty") }
+            return
+        }
+        if (targets.isEmpty()) {
+            mutateState { copy(lastMessage = "No resource roots selected for adding language '$normalizedLocaleTag'") }
+            return
+        }
+
+        mutateState {
+            copy(
+                statusText = "Adding language",
+                isBusy = true,
+                activeOperation = UiOperation.APPLYING,
+                progressCurrent = 0,
+                progressTotal = targets.size,
+                lastMessage = "Adding locale '$normalizedLocaleTag' (0 / ${targets.size})",
+            )
+        }
+        LOG.info("Adding locale='$normalizedLocaleTag' to ${targets.size} resource roots")
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe adding language", false) {
+            override fun run(indicator: ProgressIndicator) {
+                setCurrentProgressIndicator(indicator)
+                try {
+                    checkCanceled(indicator)
+                    indicator.isIndeterminate = false
+                    indicator.fraction = 0.0
+                    indicator.text = "LocalizePipe adding language"
+                    indicator.text2 = "Adding 0 / ${targets.size}"
+
+                    val addResult = applier.addLanguage(
+                        localeTag = normalizedLocaleTag,
+                        targets = targets,
+                        onProgress = { processedCount, createdCount ->
+                            checkCanceled(indicator)
+                            updateProgressIndicator(
+                                indicator = indicator,
+                                phaseTitle = "LocalizePipe adding language",
+                                phaseLabel = "Adding",
+                                processedCount = processedCount,
+                                phaseTotal = targets.size,
+                            )
+                            mutateState {
+                                copy(
+                                    statusText = "Adding language",
+                                    isBusy = true,
+                                    activeOperation = UiOperation.APPLYING,
+                                    progressCurrent = processedCount,
+                                    progressTotal = targets.size,
+                                    lastMessage = "Adding locale '$normalizedLocaleTag' ($processedCount / ${targets.size}, created $createdCount)",
+                                )
+                            }
+                        },
+                        shouldCancel = {
+                            checkCanceled(indicator)
+                            false
+                        },
+                    )
+
+                    val unchangedCount = addResult.skippedCount
+
+                    mutateState {
+                        copy(
+                            statusText = if (addResult.errors.isEmpty()) "Idle" else "Errors",
+                            isBusy = false,
+                            activeOperation = UiOperation.IDLE,
+                            progressCurrent = 0,
+                            progressTotal = 0,
+                            lastMessage = if (addResult.errors.isEmpty()) {
+                                "Added locale '$normalizedLocaleTag': ${addResult.createdCount} created, $unchangedCount unchanged"
+                            } else {
+                                "Added locale '$normalizedLocaleTag' with errors: ${addResult.createdCount} created, $unchangedCount unchanged, ${addResult.errors.size} errors"
+                            },
+                        )
+                    }
+                    LOG.info(
+                        "Add language completed (locale=$normalizedLocaleTag, created=${addResult.createdCount}, unchanged=$unchangedCount, errors=${addResult.errors.size})",
+                    )
+                    scheduleRescan(100)
+                } catch (cancelled: ProcessCanceledException) {
+                    mutateState {
+                        copy(
+                            statusText = "Idle",
+                            isBusy = false,
+                            activeOperation = UiOperation.IDLE,
+                            progressCurrent = 0,
+                            progressTotal = 0,
+                            lastMessage = "Add language cancelled",
+                        )
+                    }
+                    LOG.info("Add language cancelled (locale=$normalizedLocaleTag)")
+                    throw cancelled
+                } finally {
+                    clearCurrentProgressIndicator(indicator)
+                    runQueuedRescanIfNeeded()
+                }
+            }
+        })
+    }
+
     fun toggleScope() {
         if (preventChangesWhileBusy()) {
             return
@@ -754,6 +875,7 @@ data class ToolWindowUiState(
     val includeAndroidResources: Boolean = true,
     val includeComposeResources: Boolean = true,
     val deleteTargets: List<TranslationDeleteTarget> = emptyList(),
+    val languageTargets: List<LanguageAddTarget> = emptyList(),
     val detectedLocales: Set<String> = emptySet(),
     val rows: List<StringEntryRow> = emptyList(),
     val selectedRowId: String? = null,

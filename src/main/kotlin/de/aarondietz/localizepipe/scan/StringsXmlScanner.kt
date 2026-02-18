@@ -160,6 +160,53 @@ class StringsXmlScanner(private val project: Project) {
         }
     }
 
+    fun scanLanguageTargets(
+        options: ScanOptions,
+        shouldCancel: () -> Boolean = { false },
+    ): List<LanguageAddTarget> {
+        return ReadAction.compute<List<LanguageAddTarget>, RuntimeException> {
+            checkCanceled(shouldCancel)
+            val files = FilenameIndex.getVirtualFilesByName(
+                "strings.xml",
+                GlobalSearchScope.projectScope(project),
+            )
+
+            val localizedFiles = files.mapNotNull { file -> classify(file) }
+                .filter { includeByResourceKind(it.kind, options) }
+                .filter { includeByScope(it.moduleName, options) }
+
+            val grouped = localizedFiles.groupBy { GroupKey(it.resourceRootPath, it.kind, it.moduleName) }
+            val targets = mutableListOf<LanguageAddTarget>()
+
+            for ((groupKey, groupFiles) in grouped) {
+                checkCanceled(shouldCancel)
+                val hasBaseValuesFolder = groupFiles.any { it.folderName == "values" }
+                if (!hasBaseValuesFolder) {
+                    continue
+                }
+
+                val existingLocales = groupFiles
+                    .mapNotNull { it.normalizedLocaleTag }
+                    .distinct()
+                    .sorted()
+
+                targets += LanguageAddTarget(
+                    id = "${groupKey.resourceRootPath}|${groupKey.moduleName.orEmpty()}|${groupKey.kind.name}",
+                    resourceRootPath = groupKey.resourceRootPath,
+                    moduleName = groupKey.moduleName,
+                    originKind = groupKey.kind,
+                    existingLocaleTags = existingLocales,
+                )
+            }
+
+            targets.sortedWith(
+                compareBy<LanguageAddTarget> { it.moduleName ?: "" }
+                    .thenBy { it.originKind.name }
+                    .thenBy { it.resourceRootPath },
+            )
+        }
+    }
+
     private fun includeByResourceKind(kind: ResourceKind, options: ScanOptions): Boolean {
         return when (kind) {
             ResourceKind.ANDROID_RES -> options.includeAndroidResources
