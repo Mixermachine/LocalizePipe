@@ -40,7 +40,7 @@ class MyToolWindowFactory : ToolWindowFactory, DumbAware {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val controllerDisposable = Disposer.newDisposable("LocalizePipeToolWindow")
-        Disposer.register(project, controllerDisposable)
+        Disposer.register(toolWindow.contentManager, controllerDisposable)
 
         val settings = service<TranslationSettingsService>()
         val projectScanSettings = project.service<ProjectScanSettingsService>()

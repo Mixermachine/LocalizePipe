@@ -22,7 +22,6 @@
     <depends>com.intellij.modules.compose</depends>
 
     <depends>com.intellij.modules.xml</depends>
-    <depends>com.intellij.properties</depends>
     <resource-bundle>messages.MyMessageBundle</resource-bundle>
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
@@ -30,7 +29,8 @@
         <toolWindow id="LocalizePipe" anchor="right" factoryClass="de.aarondietz.localizepipe.MyToolWindowFactory"
                     icon="/icon_translate.svg"/>
         <projectConfigurable id="de.aarondietz.localizepipe.settings.project"
-                             displayName="LocalizePipe"
+                             key="settings.display.name"
+                             bundle="messages.MyMessageBundle"
                              instance="de.aarondietz.localizepipe.settings.LocalizePipeSettingsConfigurable"/>
     </extensions>
 </idea-plugin>

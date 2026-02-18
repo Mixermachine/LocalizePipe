@@ -10,10 +10,11 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
-import com.intellij.util.Alarm
+import com.intellij.util.concurrency.AppExecutorUtil
 import de.aarondietz.localizepipe.apply.TranslationApplier
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.ScanOptions
@@ -24,6 +25,8 @@ import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
 import de.aarondietz.localizepipe.translation.service.LocalAiTranslationService
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 class LocalizePipeToolWindowController(
     private val project: Project,
@@ -35,8 +38,9 @@ class LocalizePipeToolWindowController(
     private val translationService = LocalAiTranslationService(settings) { projectScanSettings.sourceLocaleTag() }
     private val applier = TranslationApplier(project)
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
-    private val rescanAlarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, parentDisposable)
+    private val scheduler = AppExecutorUtil.getAppScheduledExecutorService()
     private val lock = Any()
+    private var scheduledRescan: ScheduledFuture<*>? = null
     private var pendingRescanRequested = false
     private var currentProgressIndicator: ProgressIndicator? = null
     private var cancellationRequested = false
@@ -47,6 +51,9 @@ class LocalizePipeToolWindowController(
     )
 
     init {
+        Disposer.register(parentDisposable) {
+            cancelScheduledRescan()
+        }
         val connection = project.messageBus.connect(parentDisposable)
         connection.subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
             override fun after(events: List<VFileEvent>) {
@@ -72,7 +79,7 @@ class LocalizePipeToolWindowController(
             cancellationRequested = true
             currentProgressIndicator
         }
-        rescanAlarm.cancelAllRequests()
+        cancelScheduledRescan()
         indicator?.cancel()
         mutateState {
             copy(lastMessage = "Cancellation requested for ${activeOperation.displayName.lowercase()}")
@@ -80,8 +87,14 @@ class LocalizePipeToolWindowController(
     }
 
     fun scheduleRescan(delayMs: Int = 700) {
-        rescanAlarm.cancelAllRequests()
-        rescanAlarm.addRequest({ rescan() }, delayMs)
+        synchronized(lock) {
+            scheduledRescan?.cancel(false)
+            scheduledRescan = scheduler.schedule(
+                { rescan() },
+                delayMs.toLong(),
+                TimeUnit.MILLISECONDS,
+            )
+        }
     }
 
     fun rescan() {
@@ -130,7 +143,7 @@ class LocalizePipeToolWindowController(
                     "includeIdentical=${options.includeIdenticalToBase})",
         )
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe: Scanning", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe scanning", false) {
             override fun run(indicator: ProgressIndicator) {
                 setCurrentProgressIndicator(indicator)
                 try {
@@ -181,7 +194,7 @@ class LocalizePipeToolWindowController(
                     LOG.info(
                         "Scan completed (scope=$scopeLabel, rows=${mergedRows.size}, detectedLocales=${scanResult.detectedLocales.size})",
                     )
-                } catch (_: ProcessCanceledException) {
+                } catch (cancelled: ProcessCanceledException) {
                     mutateState {
                         copy(
                             statusText = "Idle",
@@ -194,6 +207,7 @@ class LocalizePipeToolWindowController(
                         )
                     }
                     LOG.info("Scan cancelled (scope=$scopeLabel)")
+                    throw cancelled
                 } catch (error: Throwable) {
                     mutateState {
                         copy(
@@ -209,8 +223,8 @@ class LocalizePipeToolWindowController(
                     LOG.warn("Scan failed (scope=$scopeLabel)", error)
                 } finally {
                     clearCurrentProgressIndicator(indicator)
+                    runQueuedRescanIfNeeded()
                 }
-                runQueuedRescanIfNeeded()
             }
         })
     }
@@ -254,14 +268,14 @@ class LocalizePipeToolWindowController(
             }
             LOG.info("Writing prepared translations without translation step (rows=${rowsToWrite.size})")
 
-            ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe: Writing", false) {
+            ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe writing", false) {
                 override fun run(indicator: ProgressIndicator) {
                     setCurrentProgressIndicator(indicator)
                     try {
                         checkCanceled(indicator)
                         indicator.isIndeterminate = false
                         indicator.fraction = 0.0
-                        indicator.text = "LocalizePipe: Writing"
+                        indicator.text = "LocalizePipe writing"
                         indicator.text2 = "Writing 0 / ${rowsToWrite.size}"
                         val applyResult = applier.apply(
                             rows = rowsToWrite,
@@ -269,7 +283,7 @@ class LocalizePipeToolWindowController(
                                 checkCanceled(indicator)
                                 updateProgressIndicator(
                                     indicator = indicator,
-                                    phaseTitle = "LocalizePipe: Writing",
+                                    phaseTitle = "LocalizePipe writing",
                                     phaseLabel = "Writing",
                                     processedCount = processedCount,
                                     phaseTotal = rowsToWrite.size,
@@ -309,7 +323,7 @@ class LocalizePipeToolWindowController(
                         LOG.info(
                             "Write-only run completed (written=${applyResult.appliedCount}, writeErrors=${applyResult.errors.size})",
                         )
-                    } catch (_: ProcessCanceledException) {
+                    } catch (cancelled: ProcessCanceledException) {
                         mutateState {
                             copy(
                                 statusText = "Idle",
@@ -321,10 +335,11 @@ class LocalizePipeToolWindowController(
                             )
                         }
                         LOG.info("Write-only run cancelled")
+                        throw cancelled
                     } finally {
                         clearCurrentProgressIndicator(indicator)
+                        runQueuedRescanIfNeeded()
                     }
-                    runQueuedRescanIfNeeded()
                 }
             })
             return
@@ -349,14 +364,14 @@ class LocalizePipeToolWindowController(
             .size
         val estimatedTotalWork = (rowsToTranslate.size + expectedRowsToApplyCount).coerceAtLeast(1)
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe: Translating", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe translating", false) {
             override fun run(indicator: ProgressIndicator) {
                 setCurrentProgressIndicator(indicator)
                 try {
                     checkCanceled(indicator)
                     indicator.isIndeterminate = false
                     indicator.fraction = 0.0
-                    indicator.text = "LocalizePipe: Translating"
+                    indicator.text = "LocalizePipe translating"
                     indicator.text2 = "Translating 0 / ${rowsToTranslate.size}"
 
                     val translatedRows = translationService.translateRows(
@@ -365,7 +380,7 @@ class LocalizePipeToolWindowController(
                             checkCanceled(indicator)
                             updateProgressIndicator(
                                 indicator = indicator,
-                                phaseTitle = "LocalizePipe: Translating",
+                                phaseTitle = "LocalizePipe translating",
                                 phaseLabel = "Translating",
                                 processedCount = processedCount,
                                 phaseTotal = rowsToTranslate.size,
@@ -428,7 +443,7 @@ class LocalizePipeToolWindowController(
                     checkCanceled(indicator)
                     updateProgressIndicator(
                         indicator = indicator,
-                        phaseTitle = "LocalizePipe: Writing",
+                        phaseTitle = "LocalizePipe writing",
                         phaseLabel = "Writing",
                         processedCount = 0,
                         phaseTotal = rowsToApply.size,
@@ -452,7 +467,7 @@ class LocalizePipeToolWindowController(
                             checkCanceled(indicator)
                             updateProgressIndicator(
                                 indicator = indicator,
-                                phaseTitle = "LocalizePipe: Writing",
+                                phaseTitle = "LocalizePipe writing",
                                 phaseLabel = "Writing",
                                 processedCount = processedCount,
                                 phaseTotal = rowsToApply.size,
@@ -492,7 +507,7 @@ class LocalizePipeToolWindowController(
                         "Translation + write completed (rows=${translatedRows.size}, written=${applyResult.appliedCount}, translationErrors=$errors, writeErrors=$writeErrors)",
                     )
                     scheduleRescan(100)
-                } catch (_: ProcessCanceledException) {
+                } catch (cancelled: ProcessCanceledException) {
                     mutateState {
                         copy(
                             statusText = "Idle",
@@ -504,121 +519,17 @@ class LocalizePipeToolWindowController(
                         )
                     }
                     LOG.info("Translation cancelled")
+                    throw cancelled
                 } finally {
                     clearCurrentProgressIndicator(indicator)
+                    runQueuedRescanIfNeeded()
                 }
-                runQueuedRescanIfNeeded()
-            }
-        })
-    }
-
-    fun apply() {
-        if (isBusy()) {
-            LOG.debug("Apply ignored because another operation is in progress")
-            mutateState { copy(lastMessage = "Operation already in progress") }
-            return
-        }
-        synchronized(lock) {
-            cancellationRequested = false
-        }
-
-        val rowsToApply = synchronized(lock) {
-            state.rows.filter { row ->
-                !row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR
-            }
-        }
-
-        if (rowsToApply.isEmpty()) {
-            mutateState { copy(lastMessage = "No valid proposed translations to apply") }
-            return
-        }
-
-        mutateState {
-            copy(
-                statusText = "Applying",
-                isBusy = true,
-                activeOperation = UiOperation.APPLYING,
-                progressCurrent = 0,
-                progressTotal = rowsToApply.size,
-                lastMessage = "Applying 0 / ${rowsToApply.size}",
-            )
-        }
-        LOG.info("Applying translated strings (rows=${rowsToApply.size})")
-
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe: Applying", false) {
-            override fun run(indicator: ProgressIndicator) {
-                setCurrentProgressIndicator(indicator)
-                try {
-                    checkCanceled(indicator)
-                    indicator.isIndeterminate = false
-                    indicator.fraction = 0.0
-                    indicator.text = "LocalizePipe: Applying"
-                    indicator.text2 = "Applying 0 / ${rowsToApply.size}"
-                    val applyResult = applier.apply(
-                        rows = rowsToApply,
-                        onProgress = { processedCount, appliedCount ->
-                            checkCanceled(indicator)
-                            updateProgressIndicator(
-                                indicator = indicator,
-                                phaseTitle = "LocalizePipe: Applying",
-                                phaseLabel = "Applying",
-                                processedCount = processedCount,
-                                phaseTotal = rowsToApply.size,
-                            )
-                            mutateState {
-                                copy(
-                                    statusText = "Applying",
-                                    isBusy = true,
-                                    activeOperation = UiOperation.APPLYING,
-                                    progressCurrent = processedCount,
-                                    progressTotal = rowsToApply.size,
-                                    lastMessage = "Applying $processedCount / ${rowsToApply.size} (applied $appliedCount)",
-                                )
-                            }
-                        },
-                        shouldCancel = {
-                            checkCanceled(indicator)
-                            false
-                        },
-                    )
-                    mutateState {
-                        copy(
-                            statusText = if (applyResult.errors.isEmpty()) "Idle" else "Errors",
-                            isBusy = false,
-                            activeOperation = UiOperation.IDLE,
-                            progressCurrent = 0,
-                            progressTotal = 0,
-                            lastMessage = if (applyResult.errors.isEmpty()) {
-                                "Applied ${applyResult.appliedCount} strings"
-                            } else {
-                                "Applied ${applyResult.appliedCount} with ${applyResult.errors.size} errors"
-                            },
-                        )
-                    }
-                    scheduleRescan(100)
-                    LOG.info("Apply completed (applied=${applyResult.appliedCount}, errors=${applyResult.errors.size})")
-                } catch (_: ProcessCanceledException) {
-                    mutateState {
-                        copy(
-                            statusText = "Idle",
-                            isBusy = false,
-                            activeOperation = UiOperation.IDLE,
-                            progressCurrent = 0,
-                            progressTotal = 0,
-                            lastMessage = "Apply cancelled",
-                        )
-                    }
-                    LOG.info("Apply cancelled")
-                } finally {
-                    clearCurrentProgressIndicator(indicator)
-                }
-                runQueuedRescanIfNeeded()
             }
         })
     }
 
     fun toggleScope() {
-        if (preventChangesWhileBusy("change scope")) {
+        if (preventChangesWhileBusy()) {
             return
         }
         mutateState {
@@ -629,39 +540,8 @@ class LocalizePipeToolWindowController(
         scheduleRescan()
     }
 
-    fun toggleAndroidResources() {
-        projectScanSettings.includeAndroidResources = !projectScanSettings.includeAndroidResources
-        mutateState { copy(includeAndroidResources = projectScanSettings.includeAndroidResources) }
-        scheduleRescan()
-    }
-
-    fun toggleComposeResources() {
-        projectScanSettings.includeComposeResources = !projectScanSettings.includeComposeResources
-        mutateState { copy(includeComposeResources = projectScanSettings.includeComposeResources) }
-        scheduleRescan()
-    }
-
     fun selectRow(rowId: String) {
         mutateState { copy(selectedRowId = rowId) }
-    }
-
-    fun updateSelectedRowProposedText(value: String) {
-        mutateState {
-            val selected = selectedRowId ?: return@mutateState this
-            copy(
-                rows = rows.map { row ->
-                    if (row.id == selected) {
-                        row.copy(
-                            proposedText = value,
-                            status = if (value.isBlank()) row.status else RowStatus.READY,
-                            message = null,
-                        )
-                    } else {
-                        row
-                    }
-                },
-            )
-        }
     }
 
     private fun selectedModuleName(): String? {
@@ -726,14 +606,21 @@ class LocalizePipeToolWindowController(
         }
     }
 
-    private fun preventChangesWhileBusy(action: String): Boolean {
+    private fun preventChangesWhileBusy(): Boolean {
         if (!isBusy()) {
             return false
         }
         mutateState {
-            copy(lastMessage = "Wait for ${activeOperation.displayName.lowercase()} to finish before you $action")
+            copy(lastMessage = "Wait for ${activeOperation.displayName.lowercase()} to finish before changing scope")
         }
         return true
+    }
+
+    private fun cancelScheduledRescan() {
+        synchronized(lock) {
+            scheduledRescan?.cancel(false)
+            scheduledRescan = null
+        }
     }
 
     private fun mutateState(update: ToolWindowUiState.() -> ToolWindowUiState) {

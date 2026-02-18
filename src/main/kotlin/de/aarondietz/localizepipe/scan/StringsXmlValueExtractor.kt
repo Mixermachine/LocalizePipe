@@ -25,7 +25,7 @@ object StringsXmlValueExtractor {
             val values = linkedMapOf<String, String>()
             for (index in 0 until nodes.length) {
                 val element = nodes.item(index) as? Element ?: continue
-                val key = element.getAttribute("name")?.trim().orEmpty()
+                val key = element.getAttribute("name").trim()
                 if (key.isBlank()) {
                     continue
                 }

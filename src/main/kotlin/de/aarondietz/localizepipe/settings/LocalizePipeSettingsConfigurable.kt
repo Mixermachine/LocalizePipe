@@ -3,11 +3,11 @@ package de.aarondietz.localizepipe.settings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.options.Configurable
-import com.intellij.openapi.progress.PerformInBackgroundOption
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
@@ -37,13 +37,13 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
     private lateinit var includeComposeCheckBox: JCheckBox
     private lateinit var includeIdenticalToBaseCheckBox: JCheckBox
 
-    private lateinit var providerCombo: JComboBox<TranslationProviderType>
-    private lateinit var sourceLocaleCombo: JComboBox<String>
+    private lateinit var providerCombo: ComboBox<TranslationProviderType>
+    private lateinit var sourceLocaleCombo: ComboBox<String>
     private lateinit var ollamaBaseUrlField: JBTextField
-    private lateinit var ollamaModelCombo: JComboBox<String>
-    private lateinit var ollamaRuntimeModeCombo: JComboBox<OllamaRuntimeMode>
+    private lateinit var ollamaModelCombo: ComboBox<String>
+    private lateinit var ollamaRuntimeModeCombo: ComboBox<OllamaRuntimeMode>
     private lateinit var huggingFaceBaseUrlField: JBTextField
-    private lateinit var huggingFaceModelCombo: JComboBox<String>
+    private lateinit var huggingFaceModelCombo: ComboBox<String>
     private lateinit var huggingFaceTokenField: JBTextField
     private lateinit var timeoutSecondsSpinner: JSpinner
     private lateinit var retryCountSpinner: JSpinner
@@ -55,7 +55,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
     private lateinit var ollamaPullModelButton: JButton
     private lateinit var testSourceTextLabel: JLabel
     private lateinit var testSourceTextField: JBTextField
-    private lateinit var testTargetLocaleCombo: JComboBox<String>
+    private lateinit var testTargetLocaleCombo: ComboBox<String>
     private lateinit var testTranslateButton: JButton
     private lateinit var testStatusLabel: JLabel
     private lateinit var testResultArea: JTextArea
@@ -81,8 +81,8 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         includeComposeCheckBox = JCheckBox("Scan Compose resources (composeResources/values*)")
         includeIdenticalToBaseCheckBox = JCheckBox("Include values identical to source text")
 
-        providerCombo = JComboBox(TranslationProviderType.entries.toTypedArray())
-        sourceLocaleCombo = JComboBox<String>().apply {
+        providerCombo = ComboBox(TranslationProviderType.entries.toTypedArray())
+        sourceLocaleCombo = ComboBox<String>().apply {
             maximumRowCount = 18
         }
         refreshSourceLocaleOptions()
@@ -100,7 +100,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             "translategemma:12b",
             "translategemma:27b",
         )
-        ollamaRuntimeModeCombo = JComboBox(OllamaRuntimeMode.entries.toTypedArray())
+        ollamaRuntimeModeCombo = ComboBox(OllamaRuntimeMode.entries.toTypedArray())
         huggingFaceModelCombo = editableModelCombo(
             "google/translategemma-4b-it",
             "google/translategemma-12b-it",
@@ -108,7 +108,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         )
         testSourceTextLabel = JLabel()
         testSourceTextField = JBTextField("Settings")
-        testTargetLocaleCombo = JComboBox<String>().apply {
+        testTargetLocaleCombo = ComboBox<String>().apply {
             maximumRowCount = 18
         }
         refreshTestTargetLocaleOptions()
@@ -168,7 +168,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             border = BorderFactory.createEmptyBorder(4, 0, 6, 0)
             add(modelGuidanceLabel, BorderLayout.CENTER)
         }
-        val testResultScroll = JScrollPane(testResultArea).apply {
+        val testResultScroll = JBScrollPane(testResultArea).apply {
             preferredSize = Dimension(560, 52)
         }
         val testActionRow = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
@@ -334,13 +334,13 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         rootComponent = null
     }
 
-    private fun editableModelCombo(vararg options: String): JComboBox<String> {
-        return JComboBox(options).apply {
+    private fun editableModelCombo(vararg options: String): ComboBox<String> {
+        return ComboBox(options).apply {
             isEditable = true
         }
     }
 
-    private fun selectedModel(comboBox: JComboBox<String>): String {
+    private fun selectedModel(comboBox: ComboBox<String>): String {
         val value = comboBox.editor.item?.toString()?.trim().orEmpty()
         return if (value.isBlank()) comboBox.selectedItem?.toString()?.trim().orEmpty() else value
     }
@@ -373,7 +373,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         )
     }
 
-    private fun applyRecommendationRenderer(comboBox: JComboBox<String>) {
+    private fun applyRecommendationRenderer(comboBox: ComboBox<String>) {
         comboBox.renderer = object : DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
                 list: JList<*>?,
@@ -597,7 +597,6 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             project,
             "LocalizePipe: Pull Ollama Model ($model)",
             true,
-            ALWAYS_BACKGROUND,
         ) {
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true

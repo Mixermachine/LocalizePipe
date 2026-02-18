@@ -26,12 +26,6 @@ data class ScanOptions(
     val currentModuleName: String?,
 )
 
-data class LocaleFolder(
-    val qualifierRaw: String,
-    val normalizedLocaleTag: String,
-    val filePath: String?,
-)
-
 data class StringEntryRow(
     val id: String,
     val key: String,

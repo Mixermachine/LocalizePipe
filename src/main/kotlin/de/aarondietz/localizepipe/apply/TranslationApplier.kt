@@ -24,7 +24,7 @@ class TranslationApplier(private val project: Project) {
         LOG.info("Apply operation started (rows=${rows.size})")
 
         WriteCommandAction.writeCommandAction(project)
-            .withName("Apply AI XML localisations")
+            .withName("Apply AI XML Localizations")
             .run<Throwable> {
                 for (row in rows) {
                     if (shouldCancel()) {
