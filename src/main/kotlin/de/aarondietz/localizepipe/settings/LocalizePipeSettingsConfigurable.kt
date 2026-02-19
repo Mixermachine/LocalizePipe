@@ -290,7 +290,8 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
 
         appSettings.providerType = providerCombo.selectedItem as TranslationProviderType
         appSettings.ollamaBaseUrl = ollamaBaseUrlField.text.trim()
-        appSettings.ollamaModel = selectedModel(ollamaModelCombo).ifBlank { "translategemma:4b" }
+        appSettings.ollamaModel = selectedModel(ollamaModelCombo)
+            .ifBlank { TranslationSettingsService.defaultOllamaModelForMachine() }
         appSettings.ollamaRuntimeMode =
             ollamaRuntimeModeCombo.selectedItem as? OllamaRuntimeMode ?: OllamaRuntimeMode.AUTO
         appSettings.huggingFaceBaseUrl = huggingFaceBaseUrlField.text.trim()
@@ -451,7 +452,8 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             providerType = providerCombo.selectedItem as? TranslationProviderType ?: TranslationProviderType.OLLAMA,
             sourceLocaleTag = selectedSourceLocaleTag(),
             ollamaBaseUrl = ollamaBaseUrlField.text.trim().ifBlank { "http://127.0.0.1:11434" },
-            ollamaModel = selectedModel(ollamaModelCombo).ifBlank { "translategemma:4b" },
+            ollamaModel = selectedModel(ollamaModelCombo)
+                .ifBlank { TranslationSettingsService.defaultOllamaModelForMachine() },
             ollamaRuntimeMode = ollamaRuntimeModeCombo.selectedItem as? OllamaRuntimeMode ?: OllamaRuntimeMode.AUTO,
             huggingFaceBaseUrl = huggingFaceBaseUrlField.text.trim().ifBlank { "https://api-inference.huggingface.co" },
             huggingFaceModel = selectedModel(huggingFaceModelCombo).ifBlank { "google/translategemma-4b-it" },

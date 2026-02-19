@@ -22,13 +22,24 @@ enum class OllamaRuntimeMode(val label: String) {
 @Service(Service.Level.APP)
 class TranslationSettingsService :
     SimplePersistentStateComponent<TranslationSettingsService.TranslationState>(TranslationState()) {
+    companion object {
+        private const val LEGACY_OLLAMA_DEFAULT_MODEL = "translategemma:4b"
+
+        fun defaultOllamaModelForMachine(): String {
+            val totalRamGb = TranslateGemmaSizingGuide.detectTotalSystemRamGb()
+            val recommendedSize = TranslateGemmaSizingGuide.recommendedSize(totalRamGb)
+            return TranslateGemmaSizingGuide.recommendedModelId(TranslationProviderType.OLLAMA, recommendedSize)
+        }
+    }
+
     class TranslationState : BaseState() {
         var providerType by enum(TranslationProviderType.OLLAMA)
         var sourceLocaleTag by string("en")
 
         // Ollama defaults
         var ollamaBaseUrl by string("http://127.0.0.1:11434")
-        var ollamaModel by string("translategemma:4b")
+        var ollamaModel by string()
+        var ollamaModelManuallySelected by property(false)
         var ollamaRuntimeMode by enum(OllamaRuntimeMode.AUTO)
 
         // Hugging Face defaults
@@ -62,9 +73,19 @@ class TranslationSettingsService :
         }
 
     var ollamaModel: String
-        get() = state.ollamaModel ?: "translategemma:4b"
+        get() {
+            val storedModel = state.ollamaModel?.trim().orEmpty()
+            if (storedModel.isBlank()) {
+                return defaultOllamaModelForMachine()
+            }
+            if (!state.ollamaModelManuallySelected && storedModel == LEGACY_OLLAMA_DEFAULT_MODEL) {
+                return defaultOllamaModelForMachine()
+            }
+            return storedModel
+        }
         set(value) {
             state.ollamaModel = value
+            state.ollamaModelManuallySelected = true
         }
 
     var ollamaRuntimeMode: OllamaRuntimeMode
@@ -117,7 +138,7 @@ class TranslationSettingsService :
 
     fun activeModel(): String {
         return when (providerType) {
-            TranslationProviderType.OLLAMA -> state.ollamaModel ?: "translategemma:4b"
+            TranslationProviderType.OLLAMA -> ollamaModel
             TranslationProviderType.HUGGING_FACE -> state.huggingFaceModel ?: "google/translategemma-4b-it"
         }
     }
