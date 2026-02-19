@@ -32,6 +32,10 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="LocalizePipe" anchor="right" factoryClass="de.aarondietz.localizepipe.ui.toolwindow.LocalizePipeToolWindowFactory"
                     icon="/menuIcon.svg"/>
+        <intentionAction>
+            <className>de.aarondietz.localizepipe.intentions.OpenLocalizePipeIntentionAction</className>
+            <category>LocalizePipe</category>
+        </intentionAction>
         <projectConfigurable id="de.aarondietz.localizepipe.settings.project"
                              key="settings.display.name"
                              bundle="messages.LocalizePipeBundle"
