@@ -14,10 +14,13 @@
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
         LocalizePipe helps you localize <code>strings.xml</code> faster inside IntelliJ.
-        It scans Android and Compose Multiplatform resource folders, finds missing or unchanged translations,
-        generates suggestions with Ollama or Hugging Face, validates placeholders/XML safety, and writes updates back
+        It scans Android and Compose Multiplatform resource folders, finds missing translations,
+        generates suggestions with Ollama or Hugging Face, and writes updates back
         to locale files safely.
         Use local models with Ollama for a privacy-friendly workflow without leaving your machine.
+
+        Please be aware that translating a lot of strings will take an extended amount of time,
+        depending on the used model, input length and power of your machine.
     ]]></description>
 
     <!-- Product and plugin compatibility requirements.
