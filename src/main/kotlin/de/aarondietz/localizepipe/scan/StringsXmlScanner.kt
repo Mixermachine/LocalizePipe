@@ -1,9 +1,10 @@
 package de.aarondietz.localizepipe.scan
 
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Computable
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
@@ -11,7 +12,7 @@ import de.aarondietz.localizepipe.model.*
 
 class StringsXmlScanner(private val project: Project) {
     fun scan(options: ScanOptions, shouldCancel: () -> Boolean = { false }): ScanResult {
-        return ReadAction.compute<ScanResult, RuntimeException> {
+        return ApplicationManager.getApplication().runReadAction(Computable<ScanResult> {
             checkCanceled(shouldCancel)
             val files = FilenameIndex.getVirtualFilesByName(
                 "strings.xml",
@@ -86,14 +87,14 @@ class StringsXmlScanner(private val project: Project) {
                 rows = rows.sortedWith(compareBy<StringEntryRow> { it.localeTag }.thenBy { it.key }),
                 detectedLocales = detectedLocales,
             )
-        }
+        })
     }
 
     fun scanDeletionTargets(
         options: ScanOptions,
         shouldCancel: () -> Boolean = { false },
     ): List<TranslationDeleteTarget> {
-        return ReadAction.compute<List<TranslationDeleteTarget>, RuntimeException> {
+        return ApplicationManager.getApplication().runReadAction(Computable<List<TranslationDeleteTarget>> {
             checkCanceled(shouldCancel)
             val files = FilenameIndex.getVirtualFilesByName(
                 "strings.xml",
@@ -157,14 +158,14 @@ class StringsXmlScanner(private val project: Project) {
                     .thenBy { it.moduleName ?: "" }
                     .thenBy { it.resourceRootPath },
             )
-        }
+        })
     }
 
     fun scanLanguageTargets(
         options: ScanOptions,
         shouldCancel: () -> Boolean = { false },
     ): List<LanguageAddTarget> {
-        return ReadAction.compute<List<LanguageAddTarget>, RuntimeException> {
+        return ApplicationManager.getApplication().runReadAction(Computable<List<LanguageAddTarget>> {
             checkCanceled(shouldCancel)
             val files = FilenameIndex.getVirtualFilesByName(
                 "strings.xml",
@@ -204,7 +205,7 @@ class StringsXmlScanner(private val project: Project) {
                     .thenBy { it.originKind.name }
                     .thenBy { it.resourceRootPath },
             )
-        }
+        })
     }
 
     private fun includeByResourceKind(kind: ResourceKind, options: ScanOptions): Boolean {

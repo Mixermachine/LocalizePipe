@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.3.10"
@@ -43,6 +45,8 @@ intellijPlatform {
 
     pluginVerification {
         ides {
+            create(IntelliJPlatformType.IntellijIdeaUltimate, "2025.3.2")
+            create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.1")
             recommended()
         }
     }
@@ -64,6 +68,14 @@ intellijPlatform {
             token = it
         }
         channels = providers.gradleProperty("pluginChannel").orNull?.let { listOf(it) } ?: listOf("default")
+    }
+}
+
+val runIde20261 by intellijPlatformTesting.runIde.registering {
+    version = "2026.1"
+
+    task {
+        description = "Runs IntelliJ IDEA 2026.1 with the plugin installed."
     }
 }
 
