@@ -145,7 +145,7 @@ class LocalizePipeToolWindowController(
                     "includeIdentical=${options.includeIdenticalToBase})",
         )
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe scanning", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe scanning", true) {
             override fun run(indicator: ProgressIndicator) {
                 setCurrentProgressIndicator(indicator)
                 try {
@@ -280,7 +280,7 @@ class LocalizePipeToolWindowController(
             }
             LOG.info("Writing prepared translations without translation step (rows=${rowsToWrite.size})")
 
-            ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe writing", false) {
+            ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe writing", true) {
                 override fun run(indicator: ProgressIndicator) {
                     setCurrentProgressIndicator(indicator)
                     try {
@@ -371,7 +371,7 @@ class LocalizePipeToolWindowController(
             "Starting translation (rows=${rowsToTranslate.size}, provider=${settings.providerType}, model=${settings.activeModel()})",
         )
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe translating", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe translating", true) {
             override fun run(indicator: ProgressIndicator) {
                 setCurrentProgressIndicator(indicator)
                 try {
@@ -553,7 +553,7 @@ class LocalizePipeToolWindowController(
         }
         LOG.info("Deleting translations for key='${target.key}' across $totalLocales locale files")
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe deleting translations", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe deleting translations", true) {
             override fun run(indicator: ProgressIndicator) {
                 setCurrentProgressIndicator(indicator)
                 try {
@@ -665,7 +665,7 @@ class LocalizePipeToolWindowController(
         }
         LOG.info("Adding locale='$normalizedLocaleTag' to ${targets.size} resource roots")
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe adding language", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "LocalizePipe adding language", true) {
             override fun run(indicator: ProgressIndicator) {
                 setCurrentProgressIndicator(indicator)
                 try {
