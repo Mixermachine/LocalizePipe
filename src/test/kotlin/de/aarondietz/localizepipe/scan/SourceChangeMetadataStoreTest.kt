@@ -10,6 +10,7 @@ class SourceChangeMetadataStoreTest {
     fun parsesAndSerializesLocaleAndKeyHashes() {
         val raw = """
             {
+              "description_of_file": "LocalizePipe source hashes for detecting outdated translations. Keys are locale tags, values map string keys to source hashes.",
               "de": {
                 "title": "0123456789abcdef"
               },
@@ -23,6 +24,7 @@ class SourceChangeMetadataStoreTest {
         val serialized = SourceChangeMetadataStore.serialize(metadata)
 
         assertEquals("0123456789abcdef", SourceChangeMetadataStore.hashFor(metadata, "de", "title"))
+        assertTrue(serialized.contains("\"description_of_file\""))
         assertTrue(serialized.contains("\"de\""))
         assertTrue(serialized.contains("\"title\""))
     }
@@ -51,5 +53,19 @@ class SourceChangeMetadataStoreTest {
         val removed = SourceChangeMetadataStore.removeHash(initial, "de", "title")
 
         assertTrue(removed.isEmpty())
+    }
+
+    @Test
+    fun metadataFilePathLivesAboveAndroidResourceRoot() {
+        val path = SourceChangeMetadataStore.metadataFilePath("C:/repo/app/src/main/res")
+
+        assertEquals("C:/repo/app/src/main/localizepipe-source-hashes.json", path)
+    }
+
+    @Test
+    fun metadataFilePathLivesAboveComposeResourceRoot() {
+        val path = SourceChangeMetadataStore.metadataFilePath("C:/repo/shared/src/commonMain/composeResources")
+
+        assertEquals("C:/repo/shared/src/commonMain/localizepipe-source-hashes.json", path)
     }
 }

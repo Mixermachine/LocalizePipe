@@ -37,26 +37,20 @@ class SourceChangeMarkerManager(private val project: Project) {
 
     fun updateHash(resourceRootPath: String, localeTag: String, key: String, baseText: String, localizePipeContext: String?) {
         val sourceHash = SourceChangeMarkerSupport.computeSourceHash(baseText, localizePipeContext)
-        val file = getOrCreateMetadataFile(resourceRootPath)
-        val currentMetadata = readMetadata(file)
+        val currentMetadata = readMetadata(resourceRootPath)
         val updatedMetadata = SourceChangeMetadataStore.upsertHash(currentMetadata, localeTag, key, sourceHash)
         if (updatedMetadata != currentMetadata) {
-            VfsUtil.saveText(file, SourceChangeMetadataStore.serialize(updatedMetadata))
+            persistMetadata(resourceRootPath, updatedMetadata)
         }
     }
 
     fun removeHash(resourceRootPath: String, localeTag: String, key: String) {
-        val file = findMetadataFile(resourceRootPath) ?: return
-        val currentMetadata = readMetadata(file)
+        val currentMetadata = readMetadata(resourceRootPath)
         val updatedMetadata = SourceChangeMetadataStore.removeHash(currentMetadata, localeTag, key)
         if (updatedMetadata == currentMetadata) {
             return
         }
-        if (updatedMetadata.isEmpty()) {
-            file.delete(this)
-        } else {
-            VfsUtil.saveText(file, SourceChangeMetadataStore.serialize(updatedMetadata))
-        }
+        persistMetadata(resourceRootPath, updatedMetadata)
     }
 
     private fun buildPopulatePlan(
@@ -182,9 +176,8 @@ class SourceChangeMarkerManager(private val project: Project) {
         if (metadata.isEmpty()) {
             if (file != null) {
                 file.delete(this)
-                return PersistResult(updatedEntries = 0, fileTouched = true)
             }
-            return PersistResult(updatedEntries = 0, fileTouched = false)
+            return PersistResult(updatedEntries = 0, fileTouched = file != null)
         }
 
         val target = file ?: getOrCreateMetadataFile(resourceRootPath)
@@ -193,10 +186,13 @@ class SourceChangeMarkerManager(private val project: Project) {
     }
 
     private fun getOrCreateMetadataFile(resourceRootPath: String): VirtualFile {
-        val root = LocalFileSystem.getInstance().findFileByPath(resourceRootPath)
-            ?: error("Resource root not found: $resourceRootPath")
-        return root.findChild(SourceChangeMarkerSupport.METADATA_FILE_NAME)
-            ?: root.createChildData(this, SourceChangeMarkerSupport.METADATA_FILE_NAME)
+        val targetPath = SourceChangeMetadataStore.metadataFilePath(resourceRootPath)
+        val directoryPath = targetPath.substringBeforeLast('/', missingDelimiterValue = "")
+        val fileName = targetPath.substringAfterLast('/')
+        val directory = LocalFileSystem.getInstance().findFileByPath(directoryPath)
+            ?: error("Metadata directory not found: $directoryPath")
+        return directory.findChild(fileName)
+            ?: directory.createChildData(this, fileName)
     }
 
     private fun findMetadataFile(resourceRootPath: String): VirtualFile? {

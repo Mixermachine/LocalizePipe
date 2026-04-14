@@ -2,12 +2,12 @@
 
 ## Summary
 
-Store LocalizePipe source hashes in a dedicated JSON metadata file per resource root instead of writing attributes into translated `strings.xml` entries.
+Store LocalizePipe source hashes in a dedicated JSON metadata file per resource-root family instead of writing attributes into translated `strings.xml` entries.
 
-The metadata file lives one folder above the `values*` folders:
+The metadata file lives next to the resource root:
 
-- Android: `res/localizepipe-source-hashes.json`
-- Compose: `composeResources/localizepipe-source-hashes.json`
+- Android: `src/<sourceSet>/localizepipe-source-hashes.json` next to `res/`
+- Compose: `src/commonMain/localizepipe-source-hashes.json` next to `composeResources/`
 
 If the current source text hash differs from the stored hash for a localized entry, the row is marked as `SOURCE_CHANGED` and stays actionable in the normal translation flow.
 
@@ -16,7 +16,7 @@ If the current source text hash differs from the stored hash for a localized ent
 - Keep project-scoped setting `trackSourceChanges`, default `true`
 - Keep row status `SOURCE_CHANGED`
 - Keep hash algorithm: SHA-256 over UTF-8 source text, stored as first 16 lowercase hex chars
-- Store hashes per resource root, per locale, per string key in JSON
+- Store hashes per resource-root family, per locale, per string key in JSON
 - Keep older translations without metadata as non-stale until populated
 - Populate action adds only missing hashes and never overwrites existing ones
 - Remove action clears LocalizePipe hash metadata files for the supported resource roots
@@ -26,6 +26,7 @@ If the current source text hash differs from the stored hash for a localized ent
 ### Metadata storage
 
 - Add a source-change metadata store for parsing and serializing `localizepipe-source-hashes.json`
+- Canonical path is the sibling of `res/` or `composeResources/`
 - JSON shape:
   - top-level key = locale tag
   - nested key = string resource key

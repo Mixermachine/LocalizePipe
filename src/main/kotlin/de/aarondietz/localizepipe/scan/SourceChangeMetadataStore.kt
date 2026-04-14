@@ -9,9 +9,13 @@ import kotlinx.serialization.json.jsonPrimitive
 
 object SourceChangeMetadataStore {
     private val json = Json { prettyPrint = true }
+    private const val DESCRIPTION_FIELD = "description_of_file"
+    private const val DESCRIPTION_TEXT =
+        "LocalizePipe source hashes for detecting outdated translations. Hashes are constructed from string source + localizePipeContext field (if provided)."
 
     fun metadataFilePath(resourceRootPath: String): String {
-        return "$resourceRootPath/${SourceChangeMarkerSupport.METADATA_FILE_NAME}"
+        val parentPath = resourceRootParentPath(resourceRootPath)
+        return "$parentPath/${SourceChangeMarkerSupport.METADATA_FILE_NAME}"
     }
 
     fun parse(rawJson: String): SourceChangeMetadata {
@@ -40,6 +44,7 @@ object SourceChangeMetadataStore {
 
     fun serialize(metadata: SourceChangeMetadata): String {
         val jsonObject = buildJsonObject {
+            put(DESCRIPTION_FIELD, JsonPrimitive(DESCRIPTION_TEXT))
             metadata.localeHashes.toSortedMap().forEach { (localeTag, keyHashes) ->
                 put(localeTag, buildJsonObject {
                     keyHashes.toSortedMap().forEach { (key, hash) ->
@@ -70,6 +75,15 @@ object SourceChangeMetadataStore {
 
     fun hashFor(metadata: SourceChangeMetadata, localeTag: String, key: String): String? {
         return metadata.localeHashes[localeTag]?.get(key)
+    }
+
+    private fun resourceRootParentPath(resourceRootPath: String): String {
+        val normalizedRoot = normalizeResourceRootPath(resourceRootPath)
+        return normalizedRoot.substringBeforeLast('/', missingDelimiterValue = normalizedRoot)
+    }
+
+    private fun normalizeResourceRootPath(resourceRootPath: String): String {
+        return resourceRootPath.replace('\\', '/').trimEnd('/')
     }
 }
 
