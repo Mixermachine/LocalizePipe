@@ -31,8 +31,8 @@ class StringsXmlScanner(private val project: Project) {
             for ((groupKey, groupFiles) in grouped) {
                 checkCanceled(shouldCancel)
                 val baseFile = groupFiles.firstOrNull { it.folderName == "values" } ?: continue
-                val baseMap = readStringMap(baseFile.file)
-                if (baseMap.isEmpty()) {
+                val baseEntries = readStringEntries(baseFile.file)
+                if (baseEntries.isEmpty()) {
                     continue
                 }
 
@@ -49,8 +49,9 @@ class StringsXmlScanner(private val project: Project) {
                     val qualifierRaw =
                         localeFile?.qualifierRaw ?: LocaleQualifierUtil.localeTagToQualifier(targetLocale)
 
-                    for ((key, baseText) in baseMap.toSortedMap()) {
+                    for ((key, baseEntry) in baseEntries.toSortedMap()) {
                         checkCanceled(shouldCancel)
+                        val baseText = baseEntry.text
                         val localizedText = localizedMap[key]
                         val status = when {
                             localizedText == null -> RowStatus.MISSING
@@ -78,6 +79,7 @@ class StringsXmlScanner(private val project: Project) {
                             moduleName = groupKey.moduleName,
                             originKind = groupKey.kind,
                             status = status,
+                            translationContext = baseEntry.localizePipeContext,
                         )
                     }
                 }
@@ -111,8 +113,8 @@ class StringsXmlScanner(private val project: Project) {
             for ((groupKey, groupFiles) in grouped) {
                 checkCanceled(shouldCancel)
                 val baseFile = groupFiles.firstOrNull { it.folderName == "values" } ?: continue
-                val baseMap = readStringMap(baseFile.file)
-                if (baseMap.isEmpty()) {
+                val baseEntries = readStringEntries(baseFile.file)
+                if (baseEntries.isEmpty()) {
                     continue
                 }
 
@@ -122,8 +124,9 @@ class StringsXmlScanner(private val project: Project) {
                 }
 
                 val localizedMaps = localeFiles.associateWith { localizedFile -> readStringMap(localizedFile.file) }
-                for ((key, baseText) in baseMap.toSortedMap()) {
+                for ((key, baseEntry) in baseEntries.toSortedMap()) {
                     checkCanceled(shouldCancel)
+                    val baseText = baseEntry.text
                     val localeEntries = localeFiles.mapNotNull { localeFile ->
                         val hasTranslationForKey = localizedMaps[localeFile]?.containsKey(key) == true
                         if (!hasTranslationForKey) {
@@ -247,6 +250,13 @@ class StringsXmlScanner(private val project: Project) {
             file.inputStream.bufferedReader().use { it.readText() }
         }.getOrDefault("")
         return StringsXmlValueExtractor.extract(xmlText)
+    }
+
+    private fun readStringEntries(file: VirtualFile): Map<String, StringResourceValue> {
+        val xmlText = runCatching {
+            file.inputStream.bufferedReader().use { it.readText() }
+        }.getOrDefault("")
+        return StringsXmlValueExtractor.extractEntries(xmlText)
     }
 
     private data class GroupKey(

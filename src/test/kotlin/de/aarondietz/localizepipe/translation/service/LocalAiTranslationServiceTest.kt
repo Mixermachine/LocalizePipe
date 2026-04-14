@@ -104,4 +104,32 @@ class LocalAiTranslationServiceTest {
 
         assertEquals("Speichern.", normalized)
     }
+
+    @Test
+    fun buildPromptIncludesAdditionalContextWhenPresent() {
+        val prompt = LocalAiTranslationService.buildPrompt(
+            baseText = "Save",
+            translationContext = "Verb on a toolbar button",
+            sourceLangCode = "eng_Latn",
+            targetLangCode = "deu_Latn",
+        )
+
+        assertTrue(prompt.contains("Additional context: Verb on a toolbar button"))
+        assertTrue(prompt.contains("Do not mention it in the output."))
+        assertTrue(prompt.endsWith("Text: Save"))
+    }
+
+    @Test
+    fun buildPromptOmitsAdditionalContextWhenBlank() {
+        val prompt = LocalAiTranslationService.buildPrompt(
+            baseText = "Save",
+            translationContext = "   ",
+            sourceLangCode = "eng_Latn",
+            targetLangCode = "deu_Latn",
+        )
+
+        assertFalse(prompt.contains("Additional context:"))
+        assertFalse(prompt.contains("Do not mention it in the output."))
+        assertTrue(prompt.endsWith("Text: Save"))
+    }
 }

@@ -27,4 +27,21 @@ class StringsXmlValueExtractorTest {
         val values = StringsXmlValueExtractor.extract("<resources><string name=\"x\">Hello")
         assertTrue(values.isEmpty())
     }
+
+    @Test
+    fun extractsLocalizePipeContextWhenPresent() {
+        val xml = """
+            <resources>
+                <string name="save" localizePipeContext="Verb on a toolbar button">Save</string>
+                <string name="home">Home</string>
+            </resources>
+        """.trimIndent()
+
+        val values = StringsXmlValueExtractor.extractEntries(xml)
+
+        assertEquals("Save", values["save"]?.text)
+        assertEquals("Verb on a toolbar button", values["save"]?.localizePipeContext)
+        assertEquals("Home", values["home"]?.text)
+        assertNull(values["home"]?.localizePipeContext)
+    }
 }

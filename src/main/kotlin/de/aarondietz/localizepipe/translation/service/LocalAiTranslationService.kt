@@ -87,6 +87,7 @@ class LocalAiTranslationService(
         repeat(2) { validationAttempt ->
             val translated = translateWithRetry(
                 baseText = row.baseText,
+                translationContext = row.translationContext,
                 sourceLangCode = sourceLangCode,
                 targetLangCode = targetLangCode,
             )
@@ -140,6 +141,7 @@ class LocalAiTranslationService(
 
     private fun translateWithRetry(
         baseText: String,
+        translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
     ): TranslationOutcome {
@@ -148,8 +150,18 @@ class LocalAiTranslationService(
 
         repeat(attempts) {
             val providerResult = when (settings.providerType) {
-                TranslationProviderType.OLLAMA -> requestOllama(baseText, sourceLangCode, targetLangCode)
-                TranslationProviderType.HUGGING_FACE -> requestHuggingFace(baseText, sourceLangCode, targetLangCode)
+                TranslationProviderType.OLLAMA -> requestOllama(
+                    baseText,
+                    translationContext,
+                    sourceLangCode,
+                    targetLangCode
+                )
+                TranslationProviderType.HUGGING_FACE -> requestHuggingFace(
+                    baseText,
+                    translationContext,
+                    sourceLangCode,
+                    targetLangCode,
+                )
             }
 
             when (providerResult) {
@@ -161,13 +173,18 @@ class LocalAiTranslationService(
         return TranslationOutcome(text = null, errorMessage = lastError ?: "Translation failed")
     }
 
-    private fun requestOllama(baseText: String, sourceLangCode: String, targetLangCode: String): ProviderResult {
+    private fun requestOllama(
+        baseText: String,
+        translationContext: String?,
+        sourceLangCode: String,
+        targetLangCode: String,
+    ): ProviderResult {
         val model = settings.ollamaModel()
         val baseUrl = settings.ollamaBaseUrl().trimEnd('/')
         val payload = buildJsonObject {
             put("model", model)
             put("stream", JsonPrimitive(false))
-            put("prompt", buildPrompt(baseText, sourceLangCode, targetLangCode))
+            put("prompt", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext))
             put(
                 "options",
                 buildOllamaOptions(
@@ -203,9 +220,14 @@ class LocalAiTranslationService(
         }
     }
 
-    private fun requestHuggingFace(baseText: String, sourceLangCode: String, targetLangCode: String): ProviderResult {
+    private fun requestHuggingFace(
+        baseText: String,
+        translationContext: String?,
+        sourceLangCode: String,
+        targetLangCode: String,
+    ): ProviderResult {
         val payload = buildJsonObject {
-            put("inputs", buildPrompt(baseText, sourceLangCode, targetLangCode))
+            put("inputs", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext))
             put("parameters", buildJsonObject {
                 put("return_full_text", JsonPrimitive(false))
             })
@@ -307,16 +329,6 @@ class LocalAiTranslationService(
         return message.contains("Run `ollama pull", ignoreCase = true)
     }
 
-    private fun buildPrompt(baseText: String, sourceLangCode: String, targetLangCode: String): String {
-        return buildString {
-            appendLine("Translate from $sourceLangCode to $targetLangCode.")
-            appendLine("Return only translated text.")
-            appendLine("Preserve placeholders exactly (e.g. %1\$s, %d, {name}).")
-            appendLine("Preserve XML tags exactly.")
-            append("Text: $baseText")
-        }
-    }
-
     private sealed interface ProviderResult {
         data class Success(val text: String) : ProviderResult
         data class Failure(val message: String) : ProviderResult
@@ -334,6 +346,26 @@ class LocalAiTranslationService(
     )
 
     internal companion object {
+        internal fun buildPrompt(
+            baseText: String,
+            sourceLangCode: String,
+            targetLangCode: String,
+            translationContext: String? = null,
+        ): String {
+            val normalizedContext = translationContext?.trim()?.takeIf { it.isNotEmpty() }
+            return buildString {
+                appendLine("Translate from $sourceLangCode to $targetLangCode.")
+                appendLine("Return only translated text.")
+                appendLine("Preserve placeholders exactly (e.g. %1\$s, %d, {name}).")
+                appendLine("Preserve XML tags exactly.")
+                if (normalizedContext != null) {
+                    appendLine("Use additional context only to disambiguate the translation. Do not mention it in the output.")
+                    appendLine("Additional context: $normalizedContext")
+                }
+                append("Text: $baseText")
+            }
+        }
+
         internal fun buildOllamaOptions(temperature: Float, runtimeMode: OllamaRuntimeMode): JsonObject {
             return buildJsonObject {
                 put("temperature", temperature.toDouble())

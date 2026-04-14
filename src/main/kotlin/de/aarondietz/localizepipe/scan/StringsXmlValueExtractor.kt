@@ -5,8 +5,17 @@ import org.xml.sax.InputSource
 import java.io.StringReader
 import javax.xml.parsers.DocumentBuilderFactory
 
+data class StringResourceValue(
+    val text: String,
+    val localizePipeContext: String?,
+)
+
 object StringsXmlValueExtractor {
     fun extract(xmlText: String): Map<String, String> {
+        return extractEntries(xmlText).mapValues { it.value.text }
+    }
+
+    fun extractEntries(xmlText: String): Map<String, StringResourceValue> {
         if (xmlText.isBlank()) {
             return emptyMap()
         }
@@ -22,7 +31,7 @@ object StringsXmlValueExtractor {
             val document = factory.newDocumentBuilder().parse(InputSource(StringReader(xmlText)))
             val nodes = document.getElementsByTagName("string")
 
-            val values = linkedMapOf<String, String>()
+            val values = linkedMapOf<String, StringResourceValue>()
             for (index in 0 until nodes.length) {
                 val element = nodes.item(index) as? Element ?: continue
                 val key = element.getAttribute("name").trim()
@@ -32,7 +41,10 @@ object StringsXmlValueExtractor {
                 if (element.getAttribute("translatable").equals("false", ignoreCase = true)) {
                     continue
                 }
-                values[key] = element.textContent ?: ""
+                values[key] = StringResourceValue(
+                    text = element.textContent ?: "",
+                    localizePipeContext = element.getAttribute("localizePipeContext").trim().ifBlank { null },
+                )
             }
             values
         } catch (_: Throwable) {

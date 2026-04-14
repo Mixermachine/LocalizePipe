@@ -22,4 +22,5 @@ data class StringEntryRow(
     val originKind: ResourceKind,
     val status: RowStatus,
     val message: String? = null,
+    val translationContext: String? = null,
 )
