@@ -10,6 +10,7 @@ class ProjectScanSettingsServiceTest {
 
         assertTrue(service.includeAndroidResources)
         assertTrue(service.includeComposeResources)
+        assertTrue(service.trackSourceChanges)
         assertEquals("en", service.sourceLocaleTag())
     }
 
@@ -19,10 +20,12 @@ class ProjectScanSettingsServiceTest {
 
         service.includeAndroidResources = false
         service.includeComposeResources = false
+        service.trackSourceChanges = false
         service.sourceLocaleTag = "de"
 
         assertFalse(service.includeAndroidResources)
         assertFalse(service.includeComposeResources)
+        assertFalse(service.trackSourceChanges)
         assertEquals("de", service.sourceLocaleTag())
     }
 }

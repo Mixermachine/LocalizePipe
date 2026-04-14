@@ -137,4 +137,5 @@ class TranslationApplierFormattingTest {
 
         assertEquals("Supprimer \"%1\$s\" ? Total : %1\$d Mo", normalized)
     }
+
 }

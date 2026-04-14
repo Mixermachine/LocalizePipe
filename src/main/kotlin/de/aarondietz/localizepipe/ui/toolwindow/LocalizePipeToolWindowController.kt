@@ -120,6 +120,7 @@ class LocalizePipeToolWindowController(
                 includeAndroidResources = includeAndroidResources,
                 includeComposeResources = includeComposeResources,
                 includeIdenticalToBase = projectScanSettings.includeIdenticalToBase,
+                trackSourceChanges = projectScanSettings.trackSourceChanges,
                 currentModuleName = when (scopeForScan) {
                     ScanScope.CURRENT_MODULE -> selectedModuleName()
                     ScanScope.WHOLE_PROJECT -> null
@@ -254,7 +255,9 @@ class LocalizePipeToolWindowController(
         val (rowsToTranslate, rowsToWrite) = synchronized(lock) {
             val rows = state.rows
             val translatable = rows.filter { row ->
-                row.status == RowStatus.MISSING || row.status == RowStatus.IDENTICAL
+                row.status == RowStatus.MISSING ||
+                        row.status == RowStatus.IDENTICAL ||
+                        row.status == RowStatus.SOURCE_CHANGED
             }
             val writable = rows.filter { row ->
                 !row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR

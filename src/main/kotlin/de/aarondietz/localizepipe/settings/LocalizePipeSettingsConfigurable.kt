@@ -7,11 +7,13 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
+import de.aarondietz.localizepipe.apply.SourceChangeMarkerManager
 import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.StringEntryRow
@@ -36,6 +38,9 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
     private lateinit var includeAndroidCheckBox: JCheckBox
     private lateinit var includeComposeCheckBox: JCheckBox
     private lateinit var includeIdenticalToBaseCheckBox: JCheckBox
+    private lateinit var trackSourceChangesCheckBox: JCheckBox
+    private lateinit var populateSourceChangeMarkersButton: JButton
+    private lateinit var removeSourceChangeMarkersButton: JButton
 
     private lateinit var providerCombo: ComboBox<TranslationProviderType>
     private lateinit var sourceLocaleCombo: ComboBox<String>
@@ -81,6 +86,9 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         includeAndroidCheckBox = JCheckBox("Scan Android resources (res/values*)")
         includeComposeCheckBox = JCheckBox("Scan Compose resources (composeResources/values*)")
         includeIdenticalToBaseCheckBox = JCheckBox("Include values identical to source text")
+        trackSourceChangesCheckBox = JCheckBox("Track source text changes")
+        populateSourceChangeMarkersButton = JButton("Populate source change hashes")
+        removeSourceChangeMarkersButton = JButton("Remove source change hashes")
 
         providerCombo = ComboBox(TranslationProviderType.entries.toTypedArray())
         sourceLocaleCombo = ComboBox<String>().apply {
@@ -134,11 +142,18 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         applyRecommendationRenderer(ollamaModelCombo)
         applyRecommendationRenderer(huggingFaceModelCombo)
 
+        val sourceChangeActionsPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
+            add(trackSourceChangesCheckBox)
+            add(populateSourceChangeMarkersButton)
+            add(removeSourceChangeMarkersButton)
+        }
+
         val projectPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent("Source locale tag", sourceLocaleCombo)
             .addComponent(includeAndroidCheckBox)
             .addComponent(includeComposeCheckBox)
             .addComponent(includeIdenticalToBaseCheckBox)
+            .addComponent(sourceChangeActionsPanel)
             .addComponent(
                 JLabel(
                     "<html><i>" +
@@ -229,6 +244,8 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         }
 
         providerCombo.addActionListener { updateProviderSpecificVisibility() }
+        populateSourceChangeMarkersButton.addActionListener { runSourceChangeMarkerMaintenance(populate = true) }
+        removeSourceChangeMarkersButton.addActionListener { runSourceChangeMarkerMaintenance(populate = false) }
         testTranslateButton.addActionListener { runTestTranslation() }
         ollamaPullModelButton.addActionListener { pullSelectedOllamaModel() }
         ollamaModelCombo.addActionListener {
@@ -265,6 +282,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         return includeAndroidCheckBox.isSelected != projectSettings.includeAndroidResources ||
                 includeComposeCheckBox.isSelected != projectSettings.includeComposeResources ||
                 includeIdenticalToBaseCheckBox.isSelected != projectSettings.includeIdenticalToBase ||
+                trackSourceChangesCheckBox.isSelected != projectSettings.trackSourceChanges ||
                 selectedSourceLocaleTag() != projectSettings.sourceLocaleTag() ||
                 providerCombo.selectedItem != appSettings.providerType ||
                 ollamaBaseUrlField.text.trim() != appSettings.ollamaBaseUrl() ||
@@ -286,6 +304,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         projectSettings.includeAndroidResources = includeAndroidCheckBox.isSelected
         projectSettings.includeComposeResources = includeComposeCheckBox.isSelected
         projectSettings.includeIdenticalToBase = includeIdenticalToBaseCheckBox.isSelected
+        projectSettings.trackSourceChanges = trackSourceChangesCheckBox.isSelected
         projectSettings.sourceLocaleTag = selectedSourceLocaleTag()
 
         appSettings.providerType = providerCombo.selectedItem as TranslationProviderType
@@ -310,6 +329,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         includeAndroidCheckBox.isSelected = projectSettings.includeAndroidResources
         includeComposeCheckBox.isSelected = projectSettings.includeComposeResources
         includeIdenticalToBaseCheckBox.isSelected = projectSettings.includeIdenticalToBase
+        trackSourceChangesCheckBox.isSelected = projectSettings.trackSourceChanges
         selectSourceLocale(projectSettings.sourceLocaleTag())
 
         providerCombo.selectedItem = appSettings.providerType
@@ -342,6 +362,82 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         }
         panel = null
         rootComponent = null
+    }
+
+    private fun runSourceChangeMarkerMaintenance(populate: Boolean) {
+        setSourceChangeMaintenanceButtonsEnabled(false)
+        val manager = SourceChangeMarkerManager(project)
+        val taskTitle = if (populate) {
+            "LocalizePipe: Populate Source Change Hashes"
+        } else {
+            "LocalizePipe: Remove Source Change Hashes"
+        }
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, taskTitle, true) {
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = false
+                indicator.fraction = 0.0
+                indicator.text = taskTitle
+                indicator.text2 = "Preparing..."
+
+                val result = if (populate) {
+                    manager.populateMarkers(
+                        onProgress = { processedCount, totalCount, changedEntries ->
+                            indicator.text = taskTitle
+                            indicator.text2 = "Scanning $processedCount / $totalCount (hashes added $changedEntries)"
+                            indicator.isIndeterminate = totalCount == 0
+                            if (totalCount > 0) {
+                                indicator.fraction = processedCount.toDouble() / totalCount.toDouble()
+                            }
+                        },
+                        shouldCancel = { indicator.isCanceled },
+                    )
+                } else {
+                    manager.removeMarkers(
+                        onProgress = { processedCount, totalCount, changedEntries ->
+                            indicator.text = taskTitle
+                            indicator.text2 = "Scanning $processedCount / $totalCount (hashes removed $changedEntries)"
+                            indicator.isIndeterminate = totalCount == 0
+                            if (totalCount > 0) {
+                                indicator.fraction = processedCount.toDouble() / totalCount.toDouble()
+                            }
+                        },
+                        shouldCancel = { indicator.isCanceled },
+                    )
+                }
+
+                SwingUtilities.invokeLater {
+                    setSourceChangeMaintenanceButtonsEnabled(true)
+                    val summary = if (result.errors.isEmpty()) {
+                        "Updated ${result.updatedEntries} hashes in ${result.updatedFiles} files."
+                    } else {
+                        "Updated ${result.updatedEntries} hashes in ${result.updatedFiles} files with ${result.errors.size} errors."
+                    }
+                    Messages.showInfoMessage(project, summary, "LocalizePipe")
+                }
+            }
+
+            override fun onCancel() {
+                setSourceChangeMaintenanceButtonsEnabled(true)
+            }
+
+            override fun onThrowable(error: Throwable) {
+                setSourceChangeMaintenanceButtonsEnabled(true)
+                Messages.showErrorDialog(
+                    project,
+                    error.message ?: "Source change hash maintenance failed.",
+                    "LocalizePipe",
+                )
+            }
+        })
+    }
+
+    private fun setSourceChangeMaintenanceButtonsEnabled(isEnabled: Boolean) {
+        if (!::populateSourceChangeMarkersButton.isInitialized || !::removeSourceChangeMarkersButton.isInitialized) {
+            return
+        }
+        populateSourceChangeMarkersButton.isEnabled = isEnabled
+        removeSourceChangeMarkersButton.isEnabled = isEnabled
     }
 
     private fun editableModelCombo(vararg options: String): ComboBox<String> {

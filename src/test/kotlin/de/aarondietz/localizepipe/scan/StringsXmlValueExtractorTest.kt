@@ -23,6 +23,21 @@ class StringsXmlValueExtractorTest {
     }
 
     @Test
+    fun extractEntriesReadsNormalStringFieldsWithoutSourceHash() {
+        val xml = """
+            <resources>
+                <string name="title">Einstellungen</string>
+            </resources>
+        """.trimIndent()
+
+        val entry = StringsXmlValueExtractor.extractEntries(xml)["title"]
+
+        assertNotNull(entry)
+        assertEquals("Einstellungen", entry?.text)
+        assertNull(entry?.localizePipeContext)
+    }
+
+    @Test
     fun returnsEmptyMapForInvalidXml() {
         val values = StringsXmlValueExtractor.extract("<resources><string name=\"x\">Hello")
         assertTrue(values.isEmpty())

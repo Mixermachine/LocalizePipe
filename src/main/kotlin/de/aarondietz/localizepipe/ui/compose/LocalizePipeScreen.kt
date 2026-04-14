@@ -64,6 +64,7 @@ internal fun LocalizePipeToolWindowContent(
     val selectedGroup = groupedRows.firstOrNull { group -> group.rows.any { it.id == state.selectedRowId } }
     val canTranslate = state.rows.any { row ->
         row.status == RowStatus.MISSING ||
+                row.status == RowStatus.SOURCE_CHANGED ||
                 row.status == RowStatus.IDENTICAL ||
                 (!row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR)
     }
@@ -142,7 +143,7 @@ internal fun LocalizePipeToolWindowContent(
                 Text("Strings: ${groupedRows.size} | Locale rows: ${state.rows.size}")
                 if (groupedRows.isEmpty()) {
                     SectionDivider()
-                    Text("No missing translations found for the current scope and filters.")
+                    Text("No translation candidates found for the current scope and filters.")
                 }
                 Text("Tip: use the horizontal scrollbar below the table if columns are clipped.")
 

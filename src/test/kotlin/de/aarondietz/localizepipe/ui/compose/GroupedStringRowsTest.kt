@@ -43,6 +43,20 @@ class GroupedStringRowsTest {
         assertEquals("fr", fallback.localeTag)
     }
 
+    @Test
+    fun sourceChangedOutranksIdenticalInGroupedStatusAndSelection() {
+        val rows = listOf(
+            row(locale = "de", status = RowStatus.IDENTICAL),
+            row(locale = "fr", status = RowStatus.SOURCE_CHANGED),
+            row(locale = "tr", status = RowStatus.UP_TO_DATE),
+        )
+
+        val group = GroupedStringRows.fromRows(rows).first()
+
+        assertEquals(RowStatus.SOURCE_CHANGED, group.aggregateStatus)
+        assertEquals("fr", group.preferredRow(selectedRowId = "missing-id").localeTag)
+    }
+
     private fun row(
         key: String = "login",
         locale: String,

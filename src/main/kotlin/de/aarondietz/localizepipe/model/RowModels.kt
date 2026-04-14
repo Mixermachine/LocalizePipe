@@ -3,6 +3,7 @@ package de.aarondietz.localizepipe.model
 enum class RowStatus {
     MISSING,
     IDENTICAL,
+    SOURCE_CHANGED,
     READY,
     ERROR,
     UP_TO_DATE,

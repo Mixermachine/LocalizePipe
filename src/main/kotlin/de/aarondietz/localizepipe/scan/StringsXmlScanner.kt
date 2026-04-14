@@ -5,10 +5,19 @@ import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Computable
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
-import de.aarondietz.localizepipe.model.*
+import de.aarondietz.localizepipe.model.LanguageAddTarget
+import de.aarondietz.localizepipe.model.ResourceKind
+import de.aarondietz.localizepipe.model.RowStatus
+import de.aarondietz.localizepipe.model.ScanOptions
+import de.aarondietz.localizepipe.model.ScanResult
+import de.aarondietz.localizepipe.model.ScanScope
+import de.aarondietz.localizepipe.model.StringEntryRow
+import de.aarondietz.localizepipe.model.TranslationDeleteLocaleEntry
+import de.aarondietz.localizepipe.model.TranslationDeleteTarget
 
 class StringsXmlScanner(private val project: Project) {
     fun scan(options: ScanOptions, shouldCancel: () -> Boolean = { false }): ScanResult {
@@ -35,6 +44,11 @@ class StringsXmlScanner(private val project: Project) {
                 if (baseEntries.isEmpty()) {
                     continue
                 }
+                val sourceChangeMetadata = if (options.trackSourceChanges) {
+                    readSourceChangeMetadata(groupKey.resourceRootPath)
+                } else {
+                    SourceChangeMetadata()
+                }
 
                 val localeFiles = groupFiles.filter { it.normalizedLocaleTag != null }
                 localeFiles.mapNotNullTo(detectedLocales) { it.normalizedLocaleTag }
@@ -53,9 +67,21 @@ class StringsXmlScanner(private val project: Project) {
                         checkCanceled(shouldCancel)
                         val baseText = baseEntry.text
                         val localizedText = localizedMap[key]
+                        val localizedSourceHash = SourceChangeMetadataStore.hashFor(
+                            metadata = sourceChangeMetadata,
+                            localeTag = targetLocale,
+                            key = key,
+                        )
+                        val currentSourceHash = SourceChangeMarkerSupport.computeSourceHash(
+                            baseText = baseText,
+                            localizePipeContext = baseEntry.localizePipeContext,
+                        )
                         val status = when {
                             localizedText == null -> RowStatus.MISSING
                             localizedText == baseText -> RowStatus.IDENTICAL
+                            options.trackSourceChanges &&
+                                    localizedSourceHash != null &&
+                                    localizedSourceHash != currentSourceHash -> RowStatus.SOURCE_CHANGED
                             else -> RowStatus.UP_TO_DATE
                         }
 
@@ -257,6 +283,16 @@ class StringsXmlScanner(private val project: Project) {
             file.inputStream.bufferedReader().use { it.readText() }
         }.getOrDefault("")
         return StringsXmlValueExtractor.extractEntries(xmlText)
+    }
+
+    private fun readSourceChangeMetadata(resourceRootPath: String): SourceChangeMetadata {
+        val metadataFile = LocalFileSystem.getInstance()
+            .findFileByPath(SourceChangeMetadataStore.metadataFilePath(resourceRootPath))
+            ?: return SourceChangeMetadata()
+        val rawJson = runCatching {
+            metadataFile.inputStream.bufferedReader().use { it.readText() }
+        }.getOrDefault("")
+        return SourceChangeMetadataStore.parse(rawJson)
     }
 
     private data class GroupKey(

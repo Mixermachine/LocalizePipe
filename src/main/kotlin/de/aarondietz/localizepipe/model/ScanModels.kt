@@ -15,6 +15,7 @@ data class ScanOptions(
     val includeAndroidResources: Boolean,
     val includeComposeResources: Boolean,
     val includeIdenticalToBase: Boolean,
+    val trackSourceChanges: Boolean,
     val currentModuleName: String?,
 )
 

@@ -1,6 +1,7 @@
 package de.aarondietz.localizepipe.apply
 
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
@@ -14,8 +15,12 @@ import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.model.StringEntryRow
 import de.aarondietz.localizepipe.model.TranslationDeleteTarget
 import de.aarondietz.localizepipe.scan.LocaleQualifierUtil
+import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 
 class TranslationApplier(private val project: Project) {
+    private val projectScanSettings = project.service<ProjectScanSettingsService>()
+    private val sourceChangeMarkerManager = SourceChangeMarkerManager(project)
+
     fun apply(
         rows: List<StringEntryRow>,
         onProgress: (processedCount: Int, appliedCount: Int) -> Unit = { _, _ -> },
@@ -43,6 +48,21 @@ class TranslationApplier(private val project: Project) {
                     try {
                         val localeFile = ensureLocaleFile(row)
                         upsertString(localeFile, row.key, proposed, row.originKind)
+                        if (projectScanSettings.trackSourceChanges) {
+                            sourceChangeMarkerManager.updateHash(
+                                resourceRootPath = row.resourceRootPath,
+                                localeTag = row.localeTag,
+                                key = row.key,
+                                baseText = row.baseText,
+                                localizePipeContext = row.translationContext,
+                            )
+                        } else {
+                            sourceChangeMarkerManager.removeHash(
+                                resourceRootPath = row.resourceRootPath,
+                                localeTag = row.localeTag,
+                                key = row.key,
+                            )
+                        }
                         appliedCount++
                     } catch (error: Throwable) {
                         LOG.warn("Failed to apply translation for key='${row.key}' locale='${row.localeTag}'", error)
@@ -82,6 +102,11 @@ class TranslationApplier(private val project: Project) {
                         val (updatedText, wasDeleted) = removeStringText(currentText, target.key)
                         if (wasDeleted) {
                             VfsUtil.saveText(localeFile, updatedText)
+                            sourceChangeMarkerManager.removeHash(
+                                resourceRootPath = target.resourceRootPath,
+                                localeTag = localeEntry.localeTag,
+                                key = target.key,
+                            )
                             deletedCount++
                         }
                     } catch (error: Throwable) {
@@ -194,7 +219,7 @@ class TranslationApplier(private val project: Project) {
         }
 
         val currentText = localeFile.inputStream.bufferedReader().use { it.readText() }
-        val updatedText = upsertStringText(currentText, key, normalizedText)
+        val updatedText = upsertStringText(currentText = currentText, key = key, translatedText = normalizedText)
         VfsUtil.saveText(localeFile, updatedText)
     }
 
@@ -263,7 +288,11 @@ class TranslationApplier(private val project: Project) {
             return this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'
         }
 
-        internal fun upsertStringText(currentText: String, key: String, translatedText: String): String {
+        internal fun upsertStringText(
+            currentText: String,
+            key: String,
+            translatedText: String,
+        ): String {
             val escapedKey = StringUtil.escapeXmlEntities(key)
             val escapedValue = escapeXmlTextNode(translatedText)
             val existingTagPattern = Regex(

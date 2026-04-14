@@ -13,6 +13,7 @@ class ProjectScanSettingsService :
         var includeAndroidResources by property(true)
         var includeComposeResources by property(true)
         var includeIdenticalToBase by property(false)
+        var trackSourceChanges by property(true)
         var sourceLocaleTag by string("en")
     }
 
@@ -32,6 +33,12 @@ class ProjectScanSettingsService :
         get() = state.includeIdenticalToBase
         set(value) {
             state.includeIdenticalToBase = value
+        }
+
+    var trackSourceChanges: Boolean
+        get() = state.trackSourceChanges
+        set(value) {
+            state.trackSourceChanges = value
         }
 
     var sourceLocaleTag: String

@@ -52,6 +52,7 @@ object GroupedStringRows {
         val severity = listOf(
             RowStatus.ERROR,
             RowStatus.MISSING,
+            RowStatus.SOURCE_CHANGED,
             RowStatus.IDENTICAL,
             RowStatus.READY,
             RowStatus.UP_TO_DATE,
@@ -70,6 +71,7 @@ object GroupedStringRows {
 fun GroupedStringRow.preferredRow(selectedRowId: String?): StringEntryRow {
     rows.firstOrNull { it.id == selectedRowId }?.let { return it }
     rows.firstOrNull { it.status == RowStatus.MISSING }?.let { return it }
+    rows.firstOrNull { it.status == RowStatus.SOURCE_CHANGED }?.let { return it }
     rows.firstOrNull { it.status == RowStatus.IDENTICAL }?.let { return it }
     return rows.first()
 }
