@@ -106,7 +106,7 @@ class LocalAiTranslationService(
                     message = "Unknown translation error",
                 )
             }
-            val normalizedTranslatedText = alignTrailingPeriodToSource(
+            val normalizedTranslatedText = normalizeTranslationToSource(
                 baseText = row.baseText,
                 translatedText = translatedText,
                 removeAddedTrailingPeriod = settings.removeAddedTrailingPeriod(),
@@ -415,6 +415,49 @@ class LocalAiTranslationService(
 
             val trailingWhitespace = translatedText.substring(translatedTrimmed.length)
             return translatedTrimmed.dropLast(1) + trailingWhitespace
+        }
+
+        internal fun normalizeEdgeEllipsisToSource(baseText: String, translatedText: String): String {
+            var normalizedText = translatedText
+            val baseTrimmed = baseText.trim()
+            if (baseTrimmed.startsWith("...") || baseTrimmed.endsWith("...")) {
+                return translatedText
+            }
+
+            if (baseTrimmed.startsWith("…")) {
+                val leadingWhitespaceLength = normalizedText.indexOfFirst { !it.isWhitespace() }
+                    .let { if (it == -1) normalizedText.length else it }
+                val content = normalizedText.substring(leadingWhitespaceLength)
+                if (content.startsWith("...")) {
+                    normalizedText = normalizedText.substring(0, leadingWhitespaceLength) + "…" + content.drop(3)
+                }
+            }
+
+            if (baseTrimmed.endsWith("…")) {
+                val translatedTrimmedEnd = normalizedText.trimEnd()
+                if (translatedTrimmedEnd.endsWith("...")) {
+                    val trailingWhitespace = normalizedText.substring(translatedTrimmedEnd.length)
+                    normalizedText = translatedTrimmedEnd.dropLast(3) + "…" + trailingWhitespace
+                }
+            }
+
+            return normalizedText
+        }
+
+        internal fun normalizeTranslationToSource(
+            baseText: String,
+            translatedText: String,
+            removeAddedTrailingPeriod: Boolean,
+        ): String {
+            val periodAligned = alignTrailingPeriodToSource(
+                baseText = baseText,
+                translatedText = translatedText,
+                removeAddedTrailingPeriod = removeAddedTrailingPeriod,
+            )
+            return normalizeEdgeEllipsisToSource(
+                baseText = baseText,
+                translatedText = periodAligned,
+            )
         }
 
         private fun extractJsonErrorMessage(body: String?): String? {

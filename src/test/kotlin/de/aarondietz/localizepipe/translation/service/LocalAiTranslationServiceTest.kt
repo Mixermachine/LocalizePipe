@@ -106,6 +106,67 @@ class LocalAiTranslationServiceTest {
     }
 
     @Test
+    fun normalizesLeadingEllipsisWhenSourceStartsWithUnicodeEllipsis() {
+        val normalized = LocalAiTranslationService.normalizeEdgeEllipsisToSource(
+            baseText = "…Open settings",
+            translatedText = "...Einstellungen offnen",
+        )
+
+        assertEquals("…Einstellungen offnen", normalized)
+    }
+
+    @Test
+    fun normalizesTrailingEllipsisWhenSourceEndsWithUnicodeEllipsis() {
+        val normalized = LocalAiTranslationService.normalizeEdgeEllipsisToSource(
+            baseText = "Loading…",
+            translatedText = "Wird geladen...",
+        )
+
+        assertEquals("Wird geladen…", normalized)
+    }
+
+    @Test
+    fun normalizesBothEdgeEllipsesWhenSourceUsesUnicodeEllipsisAtBothEdges() {
+        val normalized = LocalAiTranslationService.normalizeEdgeEllipsisToSource(
+            baseText = "…Loading…",
+            translatedText = "...Wird geladen...",
+        )
+
+        assertEquals("…Wird geladen…", normalized)
+    }
+
+    @Test
+    fun keepsTranslationUnchangedWhenEllipsisIsOmitted() {
+        val normalized = LocalAiTranslationService.normalizeEdgeEllipsisToSource(
+            baseText = "…Open settings…",
+            translatedText = "Einstellungen offnen",
+        )
+
+        assertEquals("Einstellungen offnen", normalized)
+    }
+
+    @Test
+    fun keepsInternalThreeDotsUnchanged() {
+        val normalized = LocalAiTranslationService.normalizeEdgeEllipsisToSource(
+            baseText = "…Open settings",
+            translatedText = "…Einstellungen ... jetzt offnen",
+        )
+
+        assertEquals("…Einstellungen ... jetzt offnen", normalized)
+    }
+
+    @Test
+    fun normalizeTranslationToSourceAppliesTrailingPeriodAndEdgeEllipsisRules() {
+        val normalized = LocalAiTranslationService.normalizeTranslationToSource(
+            baseText = "…Loading",
+            translatedText = "...Wird geladen.",
+            removeAddedTrailingPeriod = true,
+        )
+
+        assertEquals("…Wird geladen", normalized)
+    }
+
+    @Test
     fun buildPromptIncludesAdditionalContextWhenPresent() {
         val prompt = LocalAiTranslationService.buildPrompt(
             baseText = "Save",
