@@ -2,9 +2,9 @@ import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "2.3.10"
-    id("org.jetbrains.intellij.platform") version "2.14.0"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.3.10"
+    id("org.jetbrains.kotlin.jvm") version "2.4.10"
+    id("org.jetbrains.intellij.platform") version "2.18.1"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
 
 group = "de.aarondietz"
@@ -20,7 +20,7 @@ repositories {
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     intellijPlatform {
-        intellijIdea("2025.3.2") // Check at https://www.jetbrains.com/idea/download/other/ was is the newest version
+        intellijIdea("2026.1") // Check at https://www.jetbrains.com/idea/download/other/ what is the newest version
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add plugin dependencies for compilation here:
@@ -28,7 +28,7 @@ dependencies {
         composeUI()
     }
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     testImplementation("junit:junit:4.13.2")
 }
 
@@ -47,6 +47,7 @@ intellijPlatform {
         ides {
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2025.3.2")
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.1")
+            create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2")
             recommended()
         }
     }

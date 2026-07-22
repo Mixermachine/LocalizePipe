@@ -9,6 +9,7 @@ class TranslationSettingsServiceTest {
     @Test
     fun usesExpectedOllamaDefaults() {
         val service = TranslationSettingsService()
+        service.ollamaModel = "translategemma:4b"
 
         assertEquals(TranslationProviderType.OLLAMA, service.providerType)
         assertEquals("translategemma:4b", service.activeModel())
@@ -21,6 +22,7 @@ class TranslationSettingsServiceTest {
     @Test
     fun togglesProviderAndSwitchesActiveEndpointAndModel() {
         val service = TranslationSettingsService()
+        service.ollamaModel = "translategemma:4b"
 
         service.toggleProvider()
 
