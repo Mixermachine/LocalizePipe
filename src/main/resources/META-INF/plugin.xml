@@ -26,8 +26,6 @@
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
-    <depends>com.intellij.modules.compose</depends>
-
     <depends>com.intellij.modules.xml</depends>
     <resource-bundle>messages.LocalizePipeBundle</resource-bundle>
     <!-- Extensions defined by the plugin.

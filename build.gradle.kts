@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "de.aarondietz"
-version = "0.0.14"
+version = "0.0.15"
 
 repositories {
     mavenCentral()
@@ -39,7 +39,7 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Initial version
+            Removes com.intellij.modules.compose to fix compatibility with Android Studio 2026.1 and up
         """.trimIndent()
     }
 
