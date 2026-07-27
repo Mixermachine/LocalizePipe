@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "de.aarondietz"
-version = "0.0.15"
+version = "0.0.16"
 
 repositories {
     mavenCentral()
@@ -39,7 +39,7 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Removes com.intellij.modules.compose to fix compatibility with Android Studio 2026.1 and up
+            Revert previous removal of dependency "com.intellij.modules.compose". Google team no longer packages compose module in Android Studio. Plugin broken for Android Studio. Working on it.
         """.trimIndent()
     }
 
@@ -48,6 +48,8 @@ intellijPlatform {
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2025.3.2")
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.1")
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2")
+            //create(IntelliJPlatformType.AndroidStudio, "2025.3.5")
+            //create(IntelliJPlatformType.AndroidStudio, "2026.1.4")
             recommended()
         }
     }
