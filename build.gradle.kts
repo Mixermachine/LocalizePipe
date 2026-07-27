@@ -4,11 +4,10 @@ plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.4.10"
     id("org.jetbrains.intellij.platform") version "2.18.1"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
 
 group = "de.aarondietz"
-version = "0.0.16"
+version = "0.0.17"
 
 repositories {
     mavenCentral()
@@ -24,8 +23,6 @@ dependencies {
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add plugin dependencies for compilation here:
-        @Suppress("UnstableApiUsage") // Yes composeUI might change. We accept this
-        composeUI()
     }
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
@@ -39,7 +36,10 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Revert previous removal of dependency "com.intellij.modules.compose". Google team no longer packages compose module in Android Studio. Plugin broken for Android Studio. Working on it.
+            - Complete rewrite of UI to Swing. Google no longer packages the Compose UI dependency in Android Studio, starting with 2026.1.
+            - Fixes not escaped new lines in translated text.
+            - Better display timeouts
+            - Enable and display streamed response
         """.trimIndent()
     }
 
@@ -48,8 +48,7 @@ intellijPlatform {
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2025.3.2")
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.1")
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2")
-            //create(IntelliJPlatformType.AndroidStudio, "2025.3.5")
-            //create(IntelliJPlatformType.AndroidStudio, "2026.1.4")
+            create(IntelliJPlatformType.AndroidStudio, "2026.1.3.6")
             recommended()
         }
     }
@@ -74,11 +73,20 @@ intellijPlatform {
     }
 }
 
-val runIde20261 by intellijPlatformTesting.runIde.registering {
-    version = "2026.1"
+val runIdeCustom by intellijPlatformTesting.runIde.registering {
+    version = "2026.2"
 
     task {
         description = "Runs IntelliJ IDEA 2026.1 with the plugin installed."
+    }
+}
+
+val runAndroidStudio by intellijPlatformTesting.runIde.registering {
+    type = IntelliJPlatformType.AndroidStudio
+    version = "2026.1.3.6"
+
+    task {
+        description = "Runs Android Studio 2026.1 with the plugin installed."
     }
 }
 

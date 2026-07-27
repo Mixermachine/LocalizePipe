@@ -239,20 +239,22 @@ class TranslationApplier(private val project: Project) {
                 return input
             }
 
-            val sanitizedEscapes = StringBuilder(input.length + 8)
+            val withNewlineEscapes = input.replace("\r\n", "\\n").replace("\n", "\\n")
+
+            val sanitizedEscapes = StringBuilder(withNewlineEscapes.length + 8)
             var index = 0
-            while (index < input.length) {
-                val ch = input[index]
+            while (index < withNewlineEscapes.length) {
+                val ch = withNewlineEscapes[index]
                 if (ch == '\\') {
-                    if (index == input.lastIndex) {
+                    if (index == withNewlineEscapes.lastIndex) {
                         sanitizedEscapes.append("\\\\")
                         index++
                         continue
                     }
-                    val next = input[index + 1]
+                    val next = withNewlineEscapes[index + 1]
                     val keepAsEscape = when (next) {
                         'n', 't', 'r', '\'', '"', '@', '?', '\\' -> true
-                        'u' -> index + 5 < input.length && input.substring(index + 2, index + 6).all { it.isHexDigit() }
+                        'u' -> index + 5 < withNewlineEscapes.length && withNewlineEscapes.substring(index + 2, index + 6).all { it.isHexDigit() }
                         else -> false
                     }
                     if (keepAsEscape) {

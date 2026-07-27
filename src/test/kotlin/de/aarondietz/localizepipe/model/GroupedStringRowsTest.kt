@@ -1,8 +1,5 @@
-package de.aarondietz.localizepipe.ui.compose
+package de.aarondietz.localizepipe.model
 
-import de.aarondietz.localizepipe.model.ResourceKind
-import de.aarondietz.localizepipe.model.RowStatus
-import de.aarondietz.localizepipe.model.StringEntryRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test

@@ -138,4 +138,15 @@ class TranslationApplierFormattingTest {
         assertEquals("Supprimer \"%1\$s\" ? Total : %1\$d Mo", normalized)
     }
 
+    @Test
+    fun normalizeForWriteConvertsNewlinesToAndroidEscapeSequence() {
+        val input = "Line 1\n\nLine 2"
+        val normalized = TranslationApplier.normalizeForWrite(
+            translatedText = input,
+            kind = ResourceKind.ANDROID_RES,
+        )
+
+        assertEquals("Line 1\\n\\nLine 2", normalized)
+    }
+
 }

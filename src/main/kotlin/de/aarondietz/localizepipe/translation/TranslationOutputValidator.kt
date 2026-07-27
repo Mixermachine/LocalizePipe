@@ -14,15 +14,17 @@ enum class ValidationError {
 data class ValidationResult(
     val isValid: Boolean,
     val errors: Set<ValidationError>,
+    val detailMessage: String? = null,
 )
 
 object TranslationOutputValidator {
-    private val androidPlaceholderRegex = Regex("%(?:\\d+\\$)?[#+ 0,(<]*\\d*(?:\\.\\d+)?[a-zA-Z]")
+    private val placeholderRegex = Regex("%(?:\\d+\\$)?[#+0(<]*\\d*(?:\\.\\d+)?[bBcCsSdDoxXeEgGaAtTn]|\\{[A-Za-z0-9_]+\\}")
     private val simpleXmlTagRegex = Regex("</?[A-Za-z][A-Za-z0-9]*>")
     private val bareAmpersandRegex = Regex("&(?!#\\d+;|#x[0-9A-Fa-f]+;|[A-Za-z][A-Za-z0-9]+;)")
 
     fun validate(baseText: String, translatedText: String): ValidationResult {
         val errors = linkedSetOf<ValidationError>()
+        val details = mutableListOf<String>()
 
         if (translatedText.isBlank()) {
             errors += ValidationError.EMPTY_OUTPUT
@@ -30,27 +32,38 @@ object TranslationOutputValidator {
 
         val basePlaceholders = extractPlaceholders(baseText)
         val translatedPlaceholders = extractPlaceholders(translatedText)
-        if (basePlaceholders != translatedPlaceholders) {
+        if (!arePlaceholdersCompatible(basePlaceholders, translatedPlaceholders)) {
             errors += ValidationError.PLACEHOLDERS_CHANGED
+            details += "expected $basePlaceholders, got $translatedPlaceholders"
         }
 
         val baseTags = extractTags(baseText)
         val translatedTags = extractTags(translatedText)
-        if (baseTags != translatedTags) {
+        if (baseTags.sorted() != translatedTags.sorted()) {
             errors += ValidationError.TAGS_CHANGED
+            details += "expected tags $baseTags, got $translatedTags"
         }
         if (!isXmlSafe(translatedText)) {
             errors += ValidationError.XML_UNSAFE
         }
 
+        val detailMsg = if (details.isNotEmpty()) details.joinToString("; ") else null
+
         return ValidationResult(
             isValid = errors.isEmpty(),
             errors = errors,
+            detailMessage = detailMsg,
         )
     }
 
+    private fun arePlaceholdersCompatible(base: List<String>, translated: List<String>): Boolean {
+        if (base == translated) return true
+        if (base.sorted() == translated.sorted()) return true
+        return false
+    }
+
     private fun extractPlaceholders(value: String): List<String> =
-        androidPlaceholderRegex.findAll(value).map { it.value }.toList()
+        placeholderRegex.findAll(value).map { it.value }.toList()
 
     private fun extractTags(value: String): List<String> =
         simpleXmlTagRegex.findAll(value).map { it.value }.toList()

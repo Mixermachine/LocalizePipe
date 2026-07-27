@@ -1,7 +1,4 @@
-package de.aarondietz.localizepipe.ui.compose
-
-import de.aarondietz.localizepipe.model.RowStatus
-import de.aarondietz.localizepipe.model.StringEntryRow
+package de.aarondietz.localizepipe.model
 
 data class GroupedStringRow(
     val id: String,
@@ -74,4 +71,14 @@ fun GroupedStringRow.preferredRow(selectedRowId: String?): StringEntryRow {
     rows.firstOrNull { it.status == RowStatus.SOURCE_CHANGED }?.let { return it }
     rows.firstOrNull { it.status == RowStatus.IDENTICAL }?.let { return it }
     return rows.first()
+}
+
+fun localeDisplayLabel(localeTag: String): String {
+    val parsed = java.util.Locale.forLanguageTag(localeTag)
+    val display = parsed.getDisplayName(java.util.Locale.ENGLISH)
+    return if (display.isNotBlank() && display != localeTag) {
+        "$localeTag ($display)"
+    } else {
+        localeTag
+    }
 }

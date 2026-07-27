@@ -6,10 +6,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.ui.content.ContentFactory
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
-import de.aarondietz.localizepipe.ui.compose.LocalizePipeToolWindowContent
-import org.jetbrains.jewel.bridge.addComposeTab
+import de.aarondietz.localizepipe.ui.swing.LocalizePipeSwingPanel
 
 class LocalizePipeToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun shouldBeAvailable(project: Project) = true
@@ -27,12 +27,8 @@ class LocalizePipeToolWindowFactory : ToolWindowFactory, DumbAware {
             parentDisposable = controllerDisposable,
         )
 
-        toolWindow.addComposeTab("LocalizePipe", focusOnClickInside = true) {
-            LocalizePipeToolWindowContent(
-                project = project,
-                controller = controller,
-                disposable = controllerDisposable,
-            )
-        }
+        val panel = LocalizePipeSwingPanel(project, controller, controllerDisposable)
+        val content = ContentFactory.getInstance().createContent(panel, "LocalizePipe", false)
+        toolWindow.contentManager.addContent(content)
     }
 }

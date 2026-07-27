@@ -12,11 +12,18 @@ import de.aarondietz.localizepipe.translation.TranslateGemmaLanguageMapper
 import de.aarondietz.localizepipe.translation.TranslationOutputValidator
 import de.aarondietz.localizepipe.translation.ValidationError
 import kotlinx.serialization.json.*
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.net.http.HttpTimeoutException
 import java.time.Duration
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 class LocalAiTranslationService(
     private val settings: TranslationSettingsService,
@@ -49,7 +56,15 @@ class LocalAiTranslationService(
                 continue
             }
 
-            val translatedRow = translateAndValidateRow(row, sourceLangCode, targetLangCode)
+            val translatedRow = translateAndValidateRow(
+                row = row,
+                sourceLangCode = sourceLangCode,
+                targetLangCode = targetLangCode,
+                onChunk = { partialText ->
+                    mutableRows[index] = row.copy(proposedText = partialText)
+                    onProgress(mutableRows.toList(), index)
+                },
+            )
             mutableRows[index] = translatedRow
 
             if (translatedRow.status == RowStatus.ERROR && shouldAbortRemainingRows(translatedRow.message)) {
@@ -80,9 +95,11 @@ class LocalAiTranslationService(
         row: StringEntryRow,
         sourceLangCode: String,
         targetLangCode: String,
+        onChunk: (String) -> Unit = {},
     ): StringEntryRow {
         var latestText: String? = null
         var latestValidationErrors: Set<ValidationError> = emptySet()
+        var latestValidationDetail: String? = null
 
         repeat(2) { validationAttempt ->
             val translated = translateWithRetry(
@@ -90,6 +107,7 @@ class LocalAiTranslationService(
                 translationContext = row.translationContext,
                 sourceLangCode = sourceLangCode,
                 targetLangCode = targetLangCode,
+                onChunk = onChunk,
             )
 
             if (translated.errorMessage != null) {
@@ -126,16 +144,18 @@ class LocalAiTranslationService(
             }
 
             latestValidationErrors = validation.errors
+            latestValidationDetail = validation.detailMessage
             if (validationAttempt == 0) {
                 // Retry once when validation fails before giving up.
                 return@repeat
             }
         }
 
+        val detailSuffix = latestValidationDetail?.let { " ($it)" } ?: ""
         return row.copy(
             proposedText = latestText,
             status = RowStatus.ERROR,
-            message = "Validation failed: ${latestValidationErrors.joinToString(", ")}",
+            message = "Validation failed: ${latestValidationErrors.joinToString(", ")}$detailSuffix",
         )
     }
 
@@ -144,6 +164,7 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
+        onChunk: (String) -> Unit = {},
     ): TranslationOutcome {
         val attempts = (settings.retryCount() + 1).coerceAtLeast(1)
         var lastError: String? = null
@@ -154,7 +175,8 @@ class LocalAiTranslationService(
                     baseText,
                     translationContext,
                     sourceLangCode,
-                    targetLangCode
+                    targetLangCode,
+                    onChunk = onChunk,
                 )
                 TranslationProviderType.HUGGING_FACE -> requestHuggingFace(
                     baseText,
@@ -178,12 +200,16 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
+        onChunk: (String) -> Unit = {},
     ): ProviderResult {
         val model = settings.ollamaModel()
         val baseUrl = settings.ollamaBaseUrl().trimEnd('/')
+        val baseTimeout = settings.requestTimeoutSeconds()
+        val effectiveTimeoutSeconds = maxOf(baseTimeout, baseTimeout + (baseText.length / 10).toLong())
+
         val payload = buildJsonObject {
             put("model", model)
-            put("stream", JsonPrimitive(false))
+            put("stream", JsonPrimitive(true))
             put("prompt", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext))
             put(
                 "options",
@@ -194,29 +220,118 @@ class LocalAiTranslationService(
             )
         }
 
-        val response = executePostJson(
+        return executeOllamaStreamPost(
             url = "$baseUrl/api/generate",
             body = payload.toString(),
-            bearerToken = null,
+            timeoutSeconds = effectiveTimeoutSeconds,
+            baseTextLength = baseText.length,
+            model = model,
+            baseUrl = baseUrl,
+            onChunk = onChunk,
         )
+    }
 
-        if (response.statusCode == null) {
-            val detail = response.errorMessage?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-            LOG.warn("Ollama is unreachable at $baseUrl$detail")
-            return ProviderResult.Failure("Could not reach Ollama at $baseUrl$detail")
-        }
-        if (response.statusCode !in 200..299) {
-            val message = formatOllamaFailureMessage(model, response.statusCode, response.body)
-            LOG.warn("Ollama request failed: $message")
-            return ProviderResult.Failure(message)
-        }
-        val responseBody = response.body ?: return ProviderResult.Failure("Ollama returned an empty response body")
-
+    private fun executeOllamaStreamPost(
+        url: String,
+        body: String,
+        timeoutSeconds: Long,
+        baseTextLength: Int,
+        model: String,
+        baseUrl: String,
+        onChunk: (String) -> Unit = {},
+    ): ProviderResult {
         return try {
-            ProviderResult.Success(OllamaGenerateResponseParser.extractResponseText(responseBody))
+            val client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(minOf(30L, timeoutSeconds)))
+                .build()
+
+            val request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(timeoutSeconds))
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build()
+
+            val response = client.send(request, HttpResponse.BodyHandlers.ofInputStream())
+
+            if (response.statusCode() !in 200..299) {
+                val errorBody = response.body().bufferedReader().use { it.readLine() ?: "" }
+                val message = formatOllamaFailureMessage(model, response.statusCode(), errorBody)
+                LOG.warn("Ollama request failed: $message")
+                return ProviderResult.Failure(message)
+            }
+
+            val accumulatedText = StringBuilder()
+            var tokenCount = 0
+            var firstTokenReceived = false
+            val tokenIdleTimeoutSeconds = 30L
+
+            val startTime = System.currentTimeMillis()
+            val timerExecutor = Executors.newSingleThreadScheduledExecutor()
+            val timerTask = timerExecutor.scheduleAtFixedRate({
+                if (!firstTokenReceived) {
+                    val elapsedSec = (System.currentTimeMillis() - startTime) / 1000
+                    onChunk("Startup ${elapsedSec}s/${timeoutSeconds}s")
+                }
+            }, 0, 1, TimeUnit.SECONDS)
+
+            val executor = Executors.newSingleThreadExecutor()
+            try {
+                BufferedReader(InputStreamReader(response.body(), Charsets.UTF_8)).use { reader ->
+                    while (true) {
+                        val future = executor.submit(Callable { reader.readLine() })
+                        val currentTimeout = if (firstTokenReceived) tokenIdleTimeoutSeconds else timeoutSeconds
+                        val line = try {
+                            future.get(currentTimeout, TimeUnit.SECONDS)
+                        } catch (e: TimeoutException) {
+                            future.cancel(true)
+                            val msg = if (firstTokenReceived) {
+                                "Ollama generation stalled: no token received for ${tokenIdleTimeoutSeconds}s (received $tokenCount tokens)."
+                            } else {
+                                "Ollama request timed out after ${timeoutSeconds}s (text length: $baseTextLength chars). Increase request timeout in Settings -> LocalizePipe."
+                            }
+                            LOG.warn(msg)
+                            return ProviderResult.Failure(msg)
+                        }
+                        if (line == null) break
+
+                        if (line.isNotBlank()) {
+                            try {
+                                val element = json.parseToJsonElement(line).jsonObject
+                                val chunk = element["response"]?.jsonPrimitive?.content
+                                if (!chunk.isNullOrEmpty()) {
+                                    accumulatedText.append(chunk)
+                                    tokenCount++
+                                    firstTokenReceived = true
+                                    timerTask.cancel(true)
+                                    onChunk(accumulatedText.toString())
+                                }
+                            } catch (_: Throwable) {
+                                // ignore malformed line
+                            }
+                        }
+                    }
+                }
+            } finally {
+                timerTask.cancel(true)
+                timerExecutor.shutdownNow()
+                executor.shutdownNow()
+            }
+
+            val resultText = accumulatedText.toString().trimEnd('\n', '\r')
+            if (resultText.isBlank()) {
+                ProviderResult.Failure("Ollama returned an empty response")
+            } else {
+                ProviderResult.Success(resultText)
+            }
+        } catch (error: HttpTimeoutException) {
+            val msg = "Ollama request timed out after ${timeoutSeconds}s (text length: $baseTextLength chars). Increase request timeout in Settings -> LocalizePipe."
+            LOG.warn(msg, error)
+            ProviderResult.Failure(msg)
         } catch (error: Throwable) {
-            LOG.warn("Failed to parse Ollama response", error)
-            ProviderResult.Failure("Failed to parse Ollama response: ${error.message}")
+            val detail = error.message?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+            LOG.warn("Ollama request failed at $baseUrl$detail", error)
+            ProviderResult.Failure("Could not reach Ollama at $baseUrl$detail")
         }
     }
 
@@ -225,7 +340,17 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
+        onChunk: (String) -> Unit = {},
     ): ProviderResult {
+        val baseTimeout = settings.requestTimeoutSeconds()
+        val effectiveTimeoutSeconds = maxOf(baseTimeout, baseTimeout + (baseText.length / 10).toLong())
+        val startTime = System.currentTimeMillis()
+        val timerExecutor = Executors.newSingleThreadScheduledExecutor()
+        val timerTask = timerExecutor.scheduleAtFixedRate({
+            val elapsedSec = (System.currentTimeMillis() - startTime) / 1000
+            onChunk("Processing ${elapsedSec}s/${effectiveTimeoutSeconds}s")
+        }, 0, 1, TimeUnit.SECONDS)
+
         val payload = buildJsonObject {
             put("inputs", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext))
             put("parameters", buildJsonObject {
@@ -233,25 +358,31 @@ class LocalAiTranslationService(
             })
         }
 
-        val response = executePostJson(
-            url = "${settings.huggingFaceBaseUrl().trimEnd('/')}/models/${settings.huggingFaceModel()}",
-            body = payload.toString(),
-            bearerToken = settings.huggingFaceToken().ifBlank { null },
-        )
+        try {
+            val response = executePostJson(
+                url = "${settings.huggingFaceBaseUrl().trimEnd('/')}/models/${settings.huggingFaceModel()}",
+                body = payload.toString(),
+                bearerToken = settings.huggingFaceToken().ifBlank { null },
+                timeoutSeconds = effectiveTimeoutSeconds,
+            )
 
-        if (response.statusCode == null) {
-            val detail = response.errorMessage?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-            LOG.warn("Hugging Face is unreachable$detail")
-            return ProviderResult.Failure("Could not reach Hugging Face: $detail".removeSuffix(": "))
-        }
-        val responseBody =
-            response.body ?: return ProviderResult.Failure("Hugging Face returned an empty response body")
-        if (response.statusCode !in 200..299) {
-            LOG.warn("Hugging Face request failed with status ${response.statusCode}")
+            if (response.statusCode == null) {
+                val detail = response.errorMessage?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                LOG.warn("Hugging Face is unreachable$detail")
+                return ProviderResult.Failure("Could not reach Hugging Face: $detail".removeSuffix(": "))
+            }
+            val responseBody =
+                response.body ?: return ProviderResult.Failure("Hugging Face returned an empty response body")
+            if (response.statusCode !in 200..299) {
+                LOG.warn("Hugging Face request failed with status ${response.statusCode}")
+                return parseHuggingFaceResponse(responseBody)
+            }
+
             return parseHuggingFaceResponse(responseBody)
+        } finally {
+            timerTask.cancel(true)
+            timerExecutor.shutdownNow()
         }
-
-        return parseHuggingFaceResponse(responseBody)
     }
 
     private fun parseHuggingFaceResponse(rawResponse: String): ProviderResult {
@@ -291,16 +422,21 @@ class LocalAiTranslationService(
         }
     }
 
-    private fun executePostJson(url: String, body: String, bearerToken: String?): HttpCallResult {
+    private fun executePostJson(
+        url: String,
+        body: String,
+        bearerToken: String?,
+        timeoutSeconds: Long = settings.requestTimeoutSeconds(),
+    ): HttpCallResult {
         return try {
             val client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(settings.requestTimeoutSeconds()))
+                .connectTimeout(Duration.ofSeconds(timeoutSeconds))
                 .build()
 
             val requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(settings.requestTimeoutSeconds()))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .POST(HttpRequest.BodyPublishers.ofString(body))
 
             if (!bearerToken.isNullOrBlank()) {

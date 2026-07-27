@@ -48,6 +48,26 @@ class TranslationOutputValidatorTest {
     }
 
     @Test
+    fun doesNotMatchProsePercentSignAsPlaceholder() {
+        val result = TranslationOutputValidator.validate(
+            baseText = "10% of users",
+            translatedText = "10% von Benutzern",
+        )
+
+        assertTrue(result.isValid)
+    }
+
+    @Test
+    fun acceptsReorderedPositionalPlaceholders() {
+        val result = TranslationOutputValidator.validate(
+            baseText = "User %1\$s has %2\$d items",
+            translatedText = "Hat %2\$d Elemente für %1\$s",
+        )
+
+        assertTrue(result.isValid)
+    }
+
+    @Test
     fun rejectsMalformedXmlTags() {
         val result = TranslationOutputValidator.validate(
             baseText = "Settings",
