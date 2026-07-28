@@ -28,7 +28,7 @@ class LocalizePipeToolWindowFactory : ToolWindowFactory, DumbAware {
         )
 
         val panel = LocalizePipeSwingPanel(project, controller, controllerDisposable)
-        val content = ContentFactory.getInstance().createContent(panel, "LocalizePipe", false)
+        val content = ContentFactory.getInstance().createContent(panel, "", false)
         toolWindow.contentManager.addContent(content)
     }
 }
