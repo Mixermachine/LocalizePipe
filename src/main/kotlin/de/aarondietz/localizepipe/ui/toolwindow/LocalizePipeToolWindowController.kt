@@ -257,7 +257,8 @@ class LocalizePipeToolWindowController(
             val translatable = rows.filter { row ->
                 row.status == RowStatus.MISSING ||
                         row.status == RowStatus.IDENTICAL ||
-                        row.status == RowStatus.SOURCE_CHANGED
+                        row.status == RowStatus.SOURCE_CHANGED ||
+                        row.status == RowStatus.ERROR
             }
             val writable = rows.filter { row ->
                 !row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR

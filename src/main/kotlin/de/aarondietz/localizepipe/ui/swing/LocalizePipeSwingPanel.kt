@@ -413,6 +413,7 @@ class LocalizePipeSwingPanel(
                     row.status == RowStatus.MISSING ||
                             row.status == RowStatus.SOURCE_CHANGED ||
                             row.status == RowStatus.IDENTICAL ||
+                            row.status == RowStatus.ERROR ||
                             (!row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR)
                 }
                 e.presentation.text = "Translate"
