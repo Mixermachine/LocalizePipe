@@ -33,7 +33,7 @@ object GroupedStringRows {
                     resourceRootPath = key.resourceRootPath,
                     moduleName = key.moduleName,
                     rows = sortedRows,
-                    missingLocales = sortedRows.filter { it.status == RowStatus.MISSING }.map { it.localeTag },
+                    missingLocales = sortedRows.filter { it.status == RowStatus.MISSING || it.status == RowStatus.SOURCE_CHANGED }.map { it.localeTag },
                     proposedCount = sortedRows.count { !it.proposedText.isNullOrBlank() && it.status != RowStatus.ERROR },
                     aggregateStatus = aggregateStatus(sortedRows),
                 )

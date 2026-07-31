@@ -49,6 +49,7 @@ class StringsXmlScanner(private val project: Project) {
                 } else {
                     SourceChangeMetadata()
                 }
+                val localizePipeSettings = readLocalizePipeSettings(groupKey.resourceRootPath)
 
                 val localeFiles = groupFiles.filter { it.normalizedLocaleTag != null }
                 localeFiles.mapNotNullTo(detectedLocales) { it.normalizedLocaleTag }
@@ -58,6 +59,10 @@ class StringsXmlScanner(private val project: Project) {
 
                 for (targetLocale in effectiveTargets.sorted()) {
                     checkCanceled(shouldCancel)
+                    val langSettings = LocalizePipeSettingsStore.languageSettingsFor(localizePipeSettings, targetLocale)
+                    if (langSettings?.disabled == true) {
+                        continue
+                    }
                     val localeFile = localeLookup[targetLocale]
                     val localizedMap = localeFile?.let { readStringMap(it.file) } ?: emptyMap()
                     val qualifierRaw =
@@ -293,6 +298,16 @@ class StringsXmlScanner(private val project: Project) {
             metadataFile.inputStream.bufferedReader().use { it.readText() }
         }.getOrDefault("")
         return SourceChangeMetadataStore.parse(rawJson)
+    }
+
+    private fun readLocalizePipeSettings(resourceRootPath: String): LocalizePipeSettings {
+        val settingsFile = LocalFileSystem.getInstance()
+            .findFileByPath(LocalizePipeSettingsStore.settingsFilePath(resourceRootPath))
+            ?: return LocalizePipeSettings()
+        val rawJson = runCatching {
+            settingsFile.inputStream.bufferedReader().use { it.readText() }
+        }.getOrDefault("")
+        return LocalizePipeSettingsStore.parse(rawJson)
     }
 
     private data class GroupKey(

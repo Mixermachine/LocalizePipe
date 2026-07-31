@@ -52,6 +52,7 @@ class GroupedStringRowsTest {
 
         assertEquals(RowStatus.SOURCE_CHANGED, group.aggregateStatus)
         assertEquals("fr", group.preferredRow(selectedRowId = "missing-id").localeTag)
+        assertEquals(listOf("fr"), group.missingLocales)
     }
 
     private fun row(

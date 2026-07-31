@@ -114,6 +114,7 @@ class TranslationApplier(private val project: Project) {
                         if (wasDeleted) {
                             if (document != null) {
                                 document.setText(updatedText)
+                                FileDocumentManager.getInstance().saveDocument(document)
                             } else {
                                 VfsUtil.saveText(localeFile, updatedText)
                             }
@@ -233,6 +234,7 @@ class TranslationApplier(private val project: Project) {
             val emptyXml = "<resources>\n</resources>\n"
             if (document != null) {
                 document.setText(emptyXml)
+                FileDocumentManager.getInstance().saveDocument(document)
             } else {
                 VfsUtil.saveText(localeFile, emptyXml)
             }
@@ -253,6 +255,7 @@ class TranslationApplier(private val project: Project) {
         val updatedText = upsertStringText(currentText = currentText, key = key, translatedText = normalizedText)
         if (document != null) {
             document.setText(updatedText)
+            FileDocumentManager.getInstance().saveDocument(document)
         } else {
             VfsUtil.saveText(localeFile, updatedText)
         }

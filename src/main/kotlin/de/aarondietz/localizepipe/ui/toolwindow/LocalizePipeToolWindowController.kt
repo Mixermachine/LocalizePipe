@@ -174,7 +174,7 @@ class LocalizePipeToolWindowController(
 
                     val mergedRows = scanResult.rows.map { scannedRow ->
                         val previousRow = oldRowsById[scannedRow.id]
-                        if (previousRow?.proposedText != null) {
+                        if (previousRow?.proposedText != null && previousRow.proposedText != scannedRow.localizedText) {
                             scannedRow.copy(
                                 proposedText = previousRow.proposedText,
                                 status = if (previousRow.status in setOf(RowStatus.READY, RowStatus.ERROR)) {
