@@ -32,6 +32,7 @@ import de.aarondietz.localizepipe.model.preferredRow
 import de.aarondietz.localizepipe.settings.LocalizePipeSettingsConfigurable
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
+import de.aarondietz.localizepipe.ui.dialog.KeyTranslationsDialog
 import de.aarondietz.localizepipe.ui.dialog.chooseAddLanguageRequest
 import de.aarondietz.localizepipe.ui.dialog.chooseDeleteTranslationTarget
 import de.aarondietz.localizepipe.ui.toolwindow.LocalizePipeToolWindowController
@@ -77,8 +78,7 @@ class LocalizePipeSwingPanel(
     private val detailKeyLabel = JBLabel()
     private val detailBaseTextArea = createMultiLineTextArea()
     private val detailTargetsLabel = JBLabel()
-    private val detailProposedTextArea = createMultiLineTextArea()
-    private val detailMessageArea = createMultiLineTextArea()
+    private val perLocaleDetailsPanel = JBPanel<JBPanel<*>>(GridBagLayout())
 
     init {
         setupUi()
@@ -159,6 +159,17 @@ class LocalizePipeSwingPanel(
                 updateDetailsPanel()
             }
         }
+        table.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                if (e.clickCount == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    val row = table.rowAtPoint(e.point)
+                    if (row in 0 until groupedRows.size) {
+                        val group = groupedRows[row]
+                        KeyTranslationsDialog(project, group).show()
+                    }
+                }
+            }
+        })
         table.rowHeight = 26
         table.autoResizeMode = JBTable.AUTO_RESIZE_OFF
         configureColumnWidths()
@@ -203,9 +214,7 @@ class LocalizePipeSwingPanel(
         gbc.gridy++
         detailsCardPanel.add(detailTargetsLabel, gbc)
         gbc.gridy++
-        detailsCardPanel.add(detailProposedTextArea, gbc)
-        gbc.gridy++
-        detailsCardPanel.add(detailMessageArea, gbc)
+        detailsCardPanel.add(perLocaleDetailsPanel, gbc)
 
         detailsCardPanel.isVisible = false
     }
@@ -236,10 +245,13 @@ class LocalizePipeSwingPanel(
         val errors = newState.rows.count { it.status == RowStatus.ERROR }
         val ready = newState.rows.count { it.status == RowStatus.READY }
         val progressText = if (newState.isBusy && newState.progressTotal > 0) {
-            " ${newState.progressCurrent}/${newState.progressTotal}"
+            val speedText = if (newState.currentTokenSpeed != null && newState.currentTokenSpeed > 0f) {
+                String.format(Locale.US, " (%.1f t/s)", newState.currentTokenSpeed)
+            } else ""
+            " ${newState.progressCurrent}/${newState.progressTotal}$speedText"
         } else ""
         val headline = if (newState.isBusy) newState.activeOperation.displayName else newState.statusText
-        val msgSuffix = if (newState.lastMessage.isNullOrBlank()) "" else " | ${newState.lastMessage}"
+        val msgSuffix = if (newState.isBusy || newState.lastMessage.isNullOrBlank()) "" else " | ${newState.lastMessage}"
         statusLabel.text = "Status: $headline$progressText | Ready: $ready | Errors: $errors$msgSuffix"
 
         if (newState.isBusy) {
@@ -283,28 +295,49 @@ class LocalizePipeSwingPanel(
             detailBaseTextArea.caretPosition = 0
             detailTargetsLabel.text = "Target locales: $targetLocalesText"
 
-            val preferredRow = selectedGroup.preferredRow(currentState.selectedRowId)
-            val proposed = preferredRow.proposedText
-            if (!proposed.isNullOrBlank()) {
-                if (proposed.startsWith("Startup ") || proposed.startsWith("Processing ")) {
-                    detailProposedTextArea.text = "Status: $proposed"
-                } else {
-                    detailProposedTextArea.text = tailForDisplay("Proposed text", proposed, maxChars = 50)
-                }
-                detailProposedTextArea.caretPosition = detailProposedTextArea.document.length
-                detailProposedTextArea.isVisible = true
-            } else {
-                detailProposedTextArea.isVisible = false
+            perLocaleDetailsPanel.removeAll()
+            val innerGbc = GridBagConstraints().apply {
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.HORIZONTAL
+                weightx = 1.0
+                gridx = 0
+                gridy = 0
+                insets = Insets(1, 0, 1, 0)
             }
 
-            val firstMessage = selectedGroup.rows.firstOrNull { !it.message.isNullOrBlank() }?.message
-            if (!firstMessage.isNullOrBlank()) {
-                detailMessageArea.text = "Message: ${escapeForDisplay(firstMessage)}"
-                detailMessageArea.caretPosition = 0
-                detailMessageArea.isVisible = true
-            } else {
-                detailMessageArea.isVisible = false
+            val sortedLocaleRows = selectedGroup.rows.sortedBy { it.localeTag }
+            for (row in sortedLocaleRows) {
+                val localeLabel = localeDisplayLabel(row.localeTag)
+                val proposed = row.proposedText
+                val message = row.message
+
+                val proposedDisplay = when {
+                    proposed.isNullOrBlank() -> null
+                    proposed.startsWith("Startup ") || proposed.startsWith("Processing ") -> "Status (${row.localeTag}): $proposed"
+                    else -> tailForDisplay("Proposed (${row.localeTag})", proposed, maxChars = 50)
+                }
+
+                if (proposedDisplay != null) {
+                    val propArea = createMultiLineTextArea()
+                    propArea.text = proposedDisplay
+                    propArea.caretPosition = propArea.document.length
+                    perLocaleDetailsPanel.add(propArea, innerGbc)
+                    innerGbc.gridy++
+                }
+
+                if (!message.isNullOrBlank()) {
+                    val msgArea = createMultiLineTextArea()
+                    msgArea.text = "Message (${row.localeTag}): ${escapeForDisplay(message)}"
+                    msgArea.caretPosition = 0
+                    perLocaleDetailsPanel.add(msgArea, innerGbc)
+                    innerGbc.gridy++
+                }
             }
+
+            perLocaleDetailsPanel.revalidate()
+            perLocaleDetailsPanel.repaint()
+            detailsCardPanel.revalidate()
+            detailsCardPanel.repaint()
             detailsCardPanel.isVisible = true
         } else {
             detailsCardPanel.isVisible = false

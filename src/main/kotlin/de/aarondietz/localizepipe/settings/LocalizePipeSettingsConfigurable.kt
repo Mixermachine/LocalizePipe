@@ -597,7 +597,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         val translatedRow = LocalAiTranslationService(tempSettings) { snapshot.sourceLocaleTag }
             .translateRows(
                 rows = listOf(probeRow),
-                onProgress = { _, _ -> },
+                onProgress = { _, _, _ -> },
             )
             .first()
 

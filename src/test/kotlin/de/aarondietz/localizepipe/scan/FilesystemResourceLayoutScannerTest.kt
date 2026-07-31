@@ -44,6 +44,27 @@ class FilesystemResourceLayoutScannerTest {
         assertEquals("pt-rBR", LocaleQualifierUtil.localeTagToQualifier("pt-BR"))
     }
 
+    @Test
+    fun handlesScriptBearingBcp47Qualifiers() {
+        assertEquals("sr-Cyrl", LocaleQualifierUtil.qualifierToLocaleTag("b+sr+Cyrl"))
+        assertEquals("sr-Latn", LocaleQualifierUtil.qualifierToLocaleTag("b+sr+Latn"))
+        assertEquals("zh-Hans", LocaleQualifierUtil.qualifierToLocaleTag("b+zh+Hans"))
+        assertEquals("zh-Hant-TW", LocaleQualifierUtil.qualifierToLocaleTag("b+zh+Hant+TW"))
+        assertEquals("pa-Arab", LocaleQualifierUtil.qualifierToLocaleTag("b+pa+Arab"))
+        assertEquals("sr", LocaleQualifierUtil.qualifierToLocaleTag("sr"))
+        assertEquals("sr-RS", LocaleQualifierUtil.qualifierToLocaleTag("sr-rRS"))
+
+        assertEquals("b+sr+Cyrl", LocaleQualifierUtil.localeTagToQualifier("sr-Cyrl"))
+        assertEquals("b+sr+Latn", LocaleQualifierUtil.localeTagToQualifier("sr-Latn"))
+        assertEquals("b+zh+Hans", LocaleQualifierUtil.localeTagToQualifier("zh-Hans"))
+        assertEquals("b+zh+Hant+TW", LocaleQualifierUtil.localeTagToQualifier("zh-Hant-TW"))
+        assertEquals("b+pa+Arab", LocaleQualifierUtil.localeTagToQualifier("pa-Arab"))
+        assertEquals("pt-rBR", LocaleQualifierUtil.localeTagToQualifier("pt-BR"))
+        assertEquals("sr", LocaleQualifierUtil.localeTagToQualifier("sr"))
+
+        assertEquals("b+sr+Cyrl", LocaleQualifierUtil.localeTagToQualifier(LocaleQualifierUtil.qualifierToLocaleTag("b+sr+Cyrl")!!))
+    }
+
     private fun fixturePath(resourcePath: String): Path {
         val uri = checkNotNull(javaClass.classLoader.getResource(resourcePath)) {
             "Missing fixture path: $resourcePath"

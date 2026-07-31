@@ -13,6 +13,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import de.aarondietz.localizepipe.model.LanguageAddTarget
 import de.aarondietz.localizepipe.model.ResourceKind
+import de.aarondietz.localizepipe.translation.TranslateGemmaLanguageMapper
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.util.Locale
@@ -376,8 +377,9 @@ private fun localeSuggestions(targets: List<LanguageAddTarget>): List<String> {
     )
     val existing = targets.flatMap { it.existingLocaleTags }
     val isoLanguages = Locale.getISOLanguages().toList()
+    val gemmaSupported = TranslateGemmaLanguageMapper.supportedLocaleTagsForUi()
 
-    return (common + existing + isoLanguages)
+    return (common + existing + isoLanguages + gemmaSupported)
         .map { it.replace('_', '-') }
         .distinct()
         .sortedBy { localeDisplayName(it) }

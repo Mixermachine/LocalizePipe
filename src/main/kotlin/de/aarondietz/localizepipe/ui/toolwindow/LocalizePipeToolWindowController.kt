@@ -387,7 +387,7 @@ class LocalizePipeToolWindowController(
 
                     val translatedRows = translationService.translateRows(
                         rows = rowsToTranslate,
-                        onProgress = { partialTranslatedRows, processedCount ->
+                        onProgress = { partialTranslatedRows, processedCount, speed ->
                             checkCanceled(indicator)
                             updateProgressIndicator(
                                 indicator = indicator,
@@ -397,6 +397,7 @@ class LocalizePipeToolWindowController(
                                 phaseTotal = rowsToTranslate.size,
                             )
                             val partialById = partialTranslatedRows.associateBy { it.id }
+                            val speedStr = speed?.takeIf { it > 0f }?.let { String.format(java.util.Locale.US, " (%.1f t/s)", it) } ?: ""
 
                             mutateState {
                                 val merged = rows.map { row -> partialById[row.id] ?: row }
@@ -407,7 +408,8 @@ class LocalizePipeToolWindowController(
                                     activeOperation = UiOperation.TRANSLATING,
                                     progressCurrent = processedCount,
                                     progressTotal = rowsToTranslate.size,
-                                    lastMessage = "Translating $processedCount / ${rowsToTranslate.size}",
+                                    currentTokenSpeed = speed,
+                                    lastMessage = "Translating $processedCount / ${rowsToTranslate.size}$speedStr",
                                 )
                             }
                         },
@@ -419,7 +421,10 @@ class LocalizePipeToolWindowController(
 
                     val translatedById = translatedRows.associateBy { it.id }
                     mutateState {
-                        copy(rows = rows.map { row -> translatedById[row.id] ?: row })
+                        copy(
+                            rows = rows.map { row -> translatedById[row.id] ?: row },
+                            currentTokenSpeed = null,
+                        )
                     }
 
                     val errors = translatedRows.count { it.status == RowStatus.ERROR }
@@ -890,6 +895,7 @@ data class ToolWindowUiState(
     val progressCurrent: Int = 0,
     val progressTotal: Int = 0,
     val hasCompletedInitialScan: Boolean = false,
+    val currentTokenSpeed: Float? = null,
 )
 
 enum class UiOperation(val displayName: String) {

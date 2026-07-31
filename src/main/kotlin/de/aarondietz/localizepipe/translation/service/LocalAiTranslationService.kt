@@ -33,7 +33,7 @@ class LocalAiTranslationService(
 
     fun translateRows(
         rows: List<StringEntryRow>,
-        onProgress: (translatedRows: List<StringEntryRow>, processedCount: Int) -> Unit,
+        onProgress: (translatedRows: List<StringEntryRow>, processedCount: Int, tokenSpeed: Float?) -> Unit = { _, _, _ -> },
         shouldCancel: () -> Boolean = { false },
     ): List<StringEntryRow> {
         checkCanceled(shouldCancel)
@@ -52,7 +52,7 @@ class LocalAiTranslationService(
                     status = RowStatus.ERROR,
                     message = "Unsupported locale mapping for ${row.localeTag}",
                 )
-                onProgress(mutableRows.toList(), index + 1)
+                onProgress(mutableRows.toList(), index + 1, null)
                 continue
             }
 
@@ -60,9 +60,9 @@ class LocalAiTranslationService(
                 row = row,
                 sourceLangCode = sourceLangCode,
                 targetLangCode = targetLangCode,
-                onChunk = { partialText ->
+                onChunk = { partialText, speed ->
                     mutableRows[index] = row.copy(proposedText = partialText)
-                    onProgress(mutableRows.toList(), index)
+                    onProgress(mutableRows.toList(), index, speed)
                 },
             )
             mutableRows[index] = translatedRow
@@ -75,10 +75,10 @@ class LocalAiTranslationService(
                         message = translatedRow.message,
                     )
                 }
-                onProgress(mutableRows.toList(), rows.size)
+                onProgress(mutableRows.toList(), rows.size, null)
                 break
             } else {
-                onProgress(mutableRows.toList(), index + 1)
+                onProgress(mutableRows.toList(), index + 1, null)
             }
         }
 
@@ -95,7 +95,7 @@ class LocalAiTranslationService(
         row: StringEntryRow,
         sourceLangCode: String,
         targetLangCode: String,
-        onChunk: (String) -> Unit = {},
+        onChunk: (String, Float?) -> Unit = { _, _ -> },
     ): StringEntryRow {
         var latestText: String? = null
         var latestValidationErrors: Set<ValidationError> = emptySet()
@@ -164,7 +164,7 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
-        onChunk: (String) -> Unit = {},
+        onChunk: (String, Float?) -> Unit = { _, _ -> },
     ): TranslationOutcome {
         val attempts = (settings.retryCount() + 1).coerceAtLeast(1)
         var lastError: String? = null
@@ -200,7 +200,7 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
-        onChunk: (String) -> Unit = {},
+        onChunk: (String, Float?) -> Unit = { _, _ -> },
     ): ProviderResult {
         val model = settings.ollamaModel()
         val baseUrl = settings.ollamaBaseUrl().trimEnd('/')
@@ -238,7 +238,7 @@ class LocalAiTranslationService(
         baseTextLength: Int,
         model: String,
         baseUrl: String,
-        onChunk: (String) -> Unit = {},
+        onChunk: (String, Float?) -> Unit = { _, _ -> },
     ): ProviderResult {
         return try {
             val client = HttpClient.newBuilder()
@@ -264,6 +264,7 @@ class LocalAiTranslationService(
             val accumulatedText = StringBuilder()
             var tokenCount = 0
             var firstTokenReceived = false
+            var firstTokenTimeMs = 0L
             val tokenIdleTimeoutSeconds = 30L
 
             val startTime = System.currentTimeMillis()
@@ -271,7 +272,7 @@ class LocalAiTranslationService(
             val timerTask = timerExecutor.scheduleAtFixedRate({
                 if (!firstTokenReceived) {
                     val elapsedSec = (System.currentTimeMillis() - startTime) / 1000
-                    onChunk("Startup ${elapsedSec}s/${timeoutSeconds}s")
+                    onChunk("Startup ${elapsedSec}s/${timeoutSeconds}s", null)
                 }
             }, 0, 1, TimeUnit.SECONDS)
 
@@ -299,12 +300,28 @@ class LocalAiTranslationService(
                             try {
                                 val element = json.parseToJsonElement(line).jsonObject
                                 val chunk = element["response"]?.jsonPrimitive?.content
+                                val done = element["done"]?.jsonPrimitive?.booleanOrNull ?: false
+                                val evalCount = element["eval_count"]?.jsonPrimitive?.longOrNull
+                                val evalDuration = element["eval_duration"]?.jsonPrimitive?.longOrNull
+
                                 if (!chunk.isNullOrEmpty()) {
                                     accumulatedText.append(chunk)
                                     tokenCount++
-                                    firstTokenReceived = true
-                                    timerTask.cancel(true)
-                                    onChunk(accumulatedText.toString())
+                                    val now = System.currentTimeMillis()
+                                    if (!firstTokenReceived) {
+                                        firstTokenReceived = true
+                                        firstTokenTimeMs = now
+                                        timerTask.cancel(true)
+                                    }
+                                    val elapsedMs = now - firstTokenTimeMs
+                                    val speed = if (elapsedMs > 50) {
+                                        (tokenCount.toDouble() / (elapsedMs / 1000.0)).toFloat()
+                                    } else null
+
+                                    onChunk(accumulatedText.toString(), speed)
+                                } else if (done && evalCount != null && evalDuration != null && evalDuration > 0) {
+                                    val speed = (evalCount.toDouble() / (evalDuration.toDouble() / 1e9)).toFloat()
+                                    onChunk(accumulatedText.toString(), speed)
                                 }
                             } catch (_: Throwable) {
                                 // ignore malformed line
