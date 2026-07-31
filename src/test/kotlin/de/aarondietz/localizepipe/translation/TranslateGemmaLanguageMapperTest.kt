@@ -54,4 +54,9 @@ class TranslateGemmaLanguageMapperTest {
     fun returnsNullForInvalidLocale() {
         assertNull(TranslateGemmaLanguageMapper.toGemmaCode("xx-ZZ"))
     }
+
+    @Test
+    fun detectsScriptVariantsForAmbiguousLanguages() {
+        assertEquals(setOf("Cyrl", "Latn"), TranslateGemmaLanguageMapper.scriptVariantsForLanguage("sr"))
+    }
 }

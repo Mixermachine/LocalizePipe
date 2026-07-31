@@ -22,6 +22,10 @@ import de.aarondietz.localizepipe.model.ScanOptions
 import de.aarondietz.localizepipe.model.ScanScope
 import de.aarondietz.localizepipe.model.StringEntryRow
 import de.aarondietz.localizepipe.model.TranslationDeleteTarget
+import com.intellij.openapi.vfs.LocalFileSystem
+import de.aarondietz.localizepipe.scan.LanguageSettings
+import de.aarondietz.localizepipe.scan.LocalizePipeSettings
+import de.aarondietz.localizepipe.scan.LocalizePipeSettingsStore
 import de.aarondietz.localizepipe.scan.StringsXmlScanner
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
@@ -385,6 +389,17 @@ class LocalizePipeToolWindowController(
                     indicator.text = "LocalizePipe translating"
                     indicator.text2 = "Translating 0 / ${rowsToTranslate.size}"
 
+                    val languageSettings = rowsToTranslate
+                        .map { it.resourceRootPath }
+                        .distinct()
+                        .fold(mutableMapOf<String, LanguageSettings>()) { acc, rootPath ->
+                            val fileSettings = readLocalizePipeSettings(rootPath)
+                            fileSettings.languages.forEach { (localeTag, langSettings) ->
+                                acc.putIfAbsent(localeTag, langSettings)
+                            }
+                            acc
+                        }
+
                     val translatedRows = translationService.translateRows(
                         rows = rowsToTranslate,
                         onProgress = { partialTranslatedRows, processedCount, speed ->
@@ -417,6 +432,7 @@ class LocalizePipeToolWindowController(
                             checkCanceled(indicator)
                             false
                         },
+                        languageSettings = languageSettings,
                     )
 
                     val translatedById = translatedRows.associateBy { it.id }
@@ -856,6 +872,16 @@ class LocalizePipeToolWindowController(
         ApplicationManager.getApplication().invokeLater {
             listeners.forEach { it.invoke() }
         }
+    }
+
+    private fun readLocalizePipeSettings(resourceRootPath: String): LocalizePipeSettings {
+        val settingsFile = LocalFileSystem.getInstance()
+            .findFileByPath(LocalizePipeSettingsStore.settingsFilePath(resourceRootPath))
+            ?: return LocalizePipeSettings()
+        val rawJson = runCatching {
+            settingsFile.inputStream.bufferedReader().use { it.readText() }
+        }.getOrDefault("")
+        return LocalizePipeSettingsStore.parse(rawJson)
     }
 
     private fun updateProgressIndicator(

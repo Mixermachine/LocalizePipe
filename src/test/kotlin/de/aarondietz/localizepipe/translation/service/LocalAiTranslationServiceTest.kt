@@ -193,4 +193,28 @@ class LocalAiTranslationServiceTest {
         assertFalse(prompt.contains("Do not mention it in the output."))
         assertTrue(prompt.endsWith("Text: Save"))
     }
+
+    @Test
+    fun buildPromptIncludesLanguageInstructions() {
+        val prompt = LocalAiTranslationService.buildPrompt(
+            baseText = "Welcome",
+            sourceLangCode = "eng_Latn",
+            targetLangCode = "srp_Cyrl",
+            languageInstructions = "Use formal register.",
+        )
+
+        assertTrue(prompt.contains("Language-specific instructions: Use formal register."))
+    }
+
+    @Test
+    fun buildPromptOmitsLanguageInstructionsWhenNull() {
+        val prompt = LocalAiTranslationService.buildPrompt(
+            baseText = "Welcome",
+            sourceLangCode = "eng_Latn",
+            targetLangCode = "srp_Cyrl",
+            languageInstructions = null,
+        )
+
+        assertFalse(prompt.contains("Language-specific instructions:"))
+    }
 }

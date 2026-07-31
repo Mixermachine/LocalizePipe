@@ -4,6 +4,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.StringEntryRow
+import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.settings.OllamaRuntimeMode
 import de.aarondietz.localizepipe.settings.TranslationProviderType
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
@@ -35,6 +36,7 @@ class LocalAiTranslationService(
         rows: List<StringEntryRow>,
         onProgress: (translatedRows: List<StringEntryRow>, processedCount: Int, tokenSpeed: Float?) -> Unit = { _, _, _ -> },
         shouldCancel: () -> Boolean = { false },
+        languageSettings: Map<String, LanguageSettings> = emptyMap(),
     ): List<StringEntryRow> {
         checkCanceled(shouldCancel)
         val sourceLangCode = TranslateGemmaLanguageMapper.toGemmaCode(sourceLocaleTagProvider()) ?: "eng_Latn"
@@ -45,9 +47,17 @@ class LocalAiTranslationService(
 
         for ((index, row) in rows.withIndex()) {
             checkCanceled(shouldCancel)
-            val targetLangCode = TranslateGemmaLanguageMapper.toGemmaCode(row.localeTag)
+
+            val langSettings = languageSettings[row.localeTag]
+            if (langSettings?.disabled == true) {
+                onProgress(mutableRows.toList(), index + 1, null)
+                continue
+            }
+
+            val effectiveLocaleTag = langSettings?.translationLocaleTag ?: row.localeTag
+            val targetLangCode = TranslateGemmaLanguageMapper.toGemmaCode(effectiveLocaleTag)
             if (targetLangCode == null) {
-                LOG.warn("Unsupported locale mapping for target locale '${row.localeTag}'")
+                LOG.warn("Unsupported locale mapping for target locale '${row.localeTag}' (effective tag: '$effectiveLocaleTag')")
                 mutableRows[index] = row.copy(
                     status = RowStatus.ERROR,
                     message = "Unsupported locale mapping for ${row.localeTag}",
@@ -60,6 +70,7 @@ class LocalAiTranslationService(
                 row = row,
                 sourceLangCode = sourceLangCode,
                 targetLangCode = targetLangCode,
+                languageInstructions = langSettings?.instructions,
                 onChunk = { partialText, speed ->
                     mutableRows[index] = row.copy(proposedText = partialText)
                     onProgress(mutableRows.toList(), index, speed)
@@ -95,6 +106,7 @@ class LocalAiTranslationService(
         row: StringEntryRow,
         sourceLangCode: String,
         targetLangCode: String,
+        languageInstructions: String? = null,
         onChunk: (String, Float?) -> Unit = { _, _ -> },
     ): StringEntryRow {
         var latestText: String? = null
@@ -107,6 +119,7 @@ class LocalAiTranslationService(
                 translationContext = row.translationContext,
                 sourceLangCode = sourceLangCode,
                 targetLangCode = targetLangCode,
+                languageInstructions = languageInstructions,
                 onChunk = onChunk,
             )
 
@@ -164,6 +177,7 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
+        languageInstructions: String? = null,
         onChunk: (String, Float?) -> Unit = { _, _ -> },
     ): TranslationOutcome {
         val attempts = (settings.retryCount() + 1).coerceAtLeast(1)
@@ -176,6 +190,7 @@ class LocalAiTranslationService(
                     translationContext,
                     sourceLangCode,
                     targetLangCode,
+                    languageInstructions = languageInstructions,
                     onChunk = onChunk,
                 )
                 TranslationProviderType.HUGGING_FACE -> requestHuggingFace(
@@ -183,6 +198,7 @@ class LocalAiTranslationService(
                     translationContext,
                     sourceLangCode,
                     targetLangCode,
+                    languageInstructions = languageInstructions,
                 )
             }
 
@@ -200,6 +216,7 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
+        languageInstructions: String? = null,
         onChunk: (String, Float?) -> Unit = { _, _ -> },
     ): ProviderResult {
         val model = settings.ollamaModel()
@@ -210,7 +227,7 @@ class LocalAiTranslationService(
         val payload = buildJsonObject {
             put("model", model)
             put("stream", JsonPrimitive(true))
-            put("prompt", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext))
+            put("prompt", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext, languageInstructions))
             put(
                 "options",
                 buildOllamaOptions(
@@ -357,6 +374,7 @@ class LocalAiTranslationService(
         translationContext: String?,
         sourceLangCode: String,
         targetLangCode: String,
+        languageInstructions: String? = null,
         onChunk: (String) -> Unit = {},
     ): ProviderResult {
         val baseTimeout = settings.requestTimeoutSeconds()
@@ -369,7 +387,7 @@ class LocalAiTranslationService(
         }, 0, 1, TimeUnit.SECONDS)
 
         val payload = buildJsonObject {
-            put("inputs", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext))
+            put("inputs", buildPrompt(baseText, sourceLangCode, targetLangCode, translationContext, languageInstructions))
             put("parameters", buildJsonObject {
                 put("return_full_text", JsonPrimitive(false))
             })
@@ -504,13 +522,18 @@ class LocalAiTranslationService(
             sourceLangCode: String,
             targetLangCode: String,
             translationContext: String? = null,
+            languageInstructions: String? = null,
         ): String {
             val normalizedContext = translationContext?.trim()?.takeIf { it.isNotEmpty() }
+            val normalizedLanguageInstructions = languageInstructions?.trim()?.takeIf { it.isNotEmpty() }
             return buildString {
                 appendLine("Translate from $sourceLangCode to $targetLangCode.")
                 appendLine("Return only translated text.")
                 appendLine("Preserve placeholders exactly (e.g. %1\$s, %d, {name}).")
                 appendLine("Preserve XML tags exactly.")
+                if (normalizedLanguageInstructions != null) {
+                    appendLine("Language-specific instructions: $normalizedLanguageInstructions")
+                }
                 if (normalizedContext != null) {
                     appendLine("Use additional context only to disambiguate the translation. Do not mention it in the output.")
                     appendLine("Additional context: $normalizedContext")

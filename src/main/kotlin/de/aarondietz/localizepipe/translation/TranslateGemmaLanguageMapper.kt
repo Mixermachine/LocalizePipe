@@ -53,6 +53,17 @@ object TranslateGemmaLanguageMapper {
             .sorted()
     }
 
+    fun scriptVariantsForLanguage(language: String): Set<String> {
+        val lang = language.lowercase().trim()
+        return supportedExactTags
+            .filter { tag ->
+                val parts = tag.split("-")
+                parts[0] == lang && parts.size >= 2 && parts[1].length == 4 && parts[1].all { it.isLetter() }
+            }
+            .map { it.split("-")[1] }
+            .toSet()
+    }
+
     fun toGemmaCode(localeTag: String): String? {
         val trimmed = localeTag.trim()
         if (trimmed.matches(Regex("[a-z]{3}_[A-Za-z]{4}"))) {
