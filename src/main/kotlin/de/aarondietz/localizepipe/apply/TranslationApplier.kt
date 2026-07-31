@@ -3,6 +3,7 @@ package de.aarondietz.localizepipe.apply
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
@@ -15,6 +16,7 @@ import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.model.StringEntryRow
 import de.aarondietz.localizepipe.model.TranslationDeleteTarget
 import de.aarondietz.localizepipe.scan.LocaleQualifierUtil
+import de.aarondietz.localizepipe.scan.StringsXmlValueExtractor
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 
 class TranslationApplier(private val project: Project) {
@@ -47,23 +49,31 @@ class TranslationApplier(private val project: Project) {
 
                     try {
                         val localeFile = ensureLocaleFile(row)
-                        upsertString(localeFile, row.key, proposed, row.originKind)
-                        if (projectScanSettings.trackSourceChanges) {
-                            sourceChangeMarkerManager.updateHash(
-                                resourceRootPath = row.resourceRootPath,
-                                localeTag = row.localeTag,
-                                key = row.key,
-                                baseText = row.baseText,
-                                localizePipeContext = row.translationContext,
-                            )
-                        } else {
-                            sourceChangeMarkerManager.removeHash(
-                                resourceRootPath = row.resourceRootPath,
-                                localeTag = row.localeTag,
-                                key = row.key,
-                            )
+                        val wasApplied = upsertString(
+                            localeFile = localeFile,
+                            key = row.key,
+                            translatedText = proposed,
+                            kind = row.originKind,
+                            initialLocalizedText = row.localizedText,
+                        )
+                        if (wasApplied) {
+                            if (projectScanSettings.trackSourceChanges) {
+                                sourceChangeMarkerManager.updateHash(
+                                    resourceRootPath = row.resourceRootPath,
+                                    localeTag = row.localeTag,
+                                    key = row.key,
+                                    baseText = row.baseText,
+                                    localizePipeContext = row.translationContext,
+                                )
+                            } else {
+                                sourceChangeMarkerManager.removeHash(
+                                    resourceRootPath = row.resourceRootPath,
+                                    localeTag = row.localeTag,
+                                    key = row.key,
+                                )
+                            }
+                            appliedCount++
                         }
-                        appliedCount++
                     } catch (error: Throwable) {
                         LOG.warn("Failed to apply translation for key='${row.key}' locale='${row.localeTag}'", error)
                         errors += "${row.key} (${row.localeTag}): ${error.message}"
@@ -98,10 +108,15 @@ class TranslationApplier(private val project: Project) {
                     try {
                         val localeFile = LocalFileSystem.getInstance().findFileByPath(localeEntry.localeFilePath)
                             ?: error("Locale file not found: ${localeEntry.localeFilePath}")
-                        val currentText = localeFile.inputStream.bufferedReader().use { it.readText() }
+                        val document = FileDocumentManager.getInstance().getDocument(localeFile)
+                        val currentText = document?.text ?: VfsUtil.loadText(localeFile)
                         val (updatedText, wasDeleted) = removeStringText(currentText, target.key)
                         if (wasDeleted) {
-                            VfsUtil.saveText(localeFile, updatedText)
+                            if (document != null) {
+                                document.setText(updatedText)
+                            } else {
+                                VfsUtil.saveText(localeFile, updatedText)
+                            }
                             sourceChangeMarkerManager.removeHash(
                                 resourceRootPath = target.resourceRootPath,
                                 localeTag = localeEntry.localeTag,
@@ -204,23 +219,44 @@ class TranslationApplier(private val project: Project) {
         key: String,
         translatedText: String,
         kind: ResourceKind,
-    ) {
+        initialLocalizedText: String? = null,
+    ): Boolean {
         val normalizedText = normalizeForWrite(translatedText, kind)
         val psiManager = PsiManager.getInstance(project)
         var xmlFile = psiManager.findFile(localeFile) as? XmlFile
-        if (xmlFile?.rootTag == null) {
-            VfsUtil.saveText(localeFile, "<resources>\n</resources>\n")
+
+        val documentManager = FileDocumentManager.getInstance()
+        val document = documentManager.getDocument(localeFile)
+        val initialText = document?.text ?: (if (localeFile.exists() && localeFile.length > 0) VfsUtil.loadText(localeFile) else "<resources>\n</resources>\n")
+
+        if (xmlFile?.rootTag == null && !initialText.contains("<resources")) {
+            val emptyXml = "<resources>\n</resources>\n"
+            if (document != null) {
+                document.setText(emptyXml)
+            } else {
+                VfsUtil.saveText(localeFile, emptyXml)
+            }
             localeFile.refresh(false, false)
             xmlFile = psiManager.findFile(localeFile) as? XmlFile
         }
 
-        if (xmlFile?.rootTag == null) {
-            error("Invalid XML resources file: ${localeFile.path}")
+        val currentText = document?.text ?: (if (localeFile.exists() && localeFile.length > 0) VfsUtil.loadText(localeFile) else "<resources>\n</resources>\n")
+
+        // Read before write check: If user edited key in the file while job was running, do not overwrite user edit.
+        val existingEntries = StringsXmlValueExtractor.extract(currentText)
+        val currentFileValue = existingEntries[key]
+        if (currentFileValue != null && currentFileValue.isNotBlank() && currentFileValue != initialLocalizedText) {
+            LOG.info("Skipping write for key '$key' in ${localeFile.name} because it was edited in file (current: '$currentFileValue', initial: '$initialLocalizedText')")
+            return false
         }
 
-        val currentText = localeFile.inputStream.bufferedReader().use { it.readText() }
         val updatedText = upsertStringText(currentText = currentText, key = key, translatedText = normalizedText)
-        VfsUtil.saveText(localeFile, updatedText)
+        if (document != null) {
+            document.setText(updatedText)
+        } else {
+            VfsUtil.saveText(localeFile, updatedText)
+        }
+        return true
     }
 
     internal companion object {

@@ -35,6 +35,7 @@ class LocalAiTranslationService(
     fun translateRows(
         rows: List<StringEntryRow>,
         onProgress: (translatedRows: List<StringEntryRow>, processedCount: Int, tokenSpeed: Float?) -> Unit = { _, _, _ -> },
+        onRowTranslated: (translatedRow: StringEntryRow) -> Unit = {},
         shouldCancel: () -> Boolean = { false },
         languageSettings: Map<String, LanguageSettings> = emptyMap(),
     ): List<StringEntryRow> {
@@ -77,6 +78,16 @@ class LocalAiTranslationService(
                 },
             )
             mutableRows[index] = translatedRow
+
+            if (translatedRow.status == RowStatus.READY && !translatedRow.proposedText.isNullOrBlank()) {
+                try {
+                    onRowTranslated(translatedRow)
+                } catch (e: ProcessCanceledException) {
+                    throw e
+                } catch (e: Throwable) {
+                    LOG.warn("Error in onRowTranslated callback for key='${translatedRow.key}'", e)
+                }
+            }
 
             if (translatedRow.status == RowStatus.ERROR && shouldAbortRemainingRows(translatedRow.message)) {
                 LOG.warn("Aborting remaining rows due to fatal provider error: ${translatedRow.message}")

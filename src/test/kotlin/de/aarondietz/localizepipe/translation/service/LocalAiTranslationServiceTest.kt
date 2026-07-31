@@ -217,4 +217,34 @@ class LocalAiTranslationServiceTest {
 
         assertFalse(prompt.contains("Language-specific instructions:"))
     }
+
+    @Test
+    fun translateRowsTriggersOnRowTranslatedCallbackForReadyRows() {
+        val row = de.aarondietz.localizepipe.model.StringEntryRow(
+            id = "app:values:de:key1",
+            key = "key1",
+            localeTag = "de",
+            localeQualifierRaw = "de",
+            localeFilePath = "/tmp/strings.xml",
+            resourceRootPath = "/tmp",
+            moduleName = "app",
+            baseText = "Hello",
+            localizedText = null,
+            proposedText = null,
+            status = de.aarondietz.localizepipe.model.RowStatus.MISSING,
+            originKind = de.aarondietz.localizepipe.model.ResourceKind.ANDROID_RES,
+        )
+
+        val settings = de.aarondietz.localizepipe.settings.TranslationSettingsService()
+        val service = LocalAiTranslationService(settings) { "en" }
+
+        val translatedReadyRows = mutableListOf<de.aarondietz.localizepipe.model.StringEntryRow>()
+        service.translateRows(
+            rows = listOf(row),
+            onRowTranslated = { translatedReadyRows.add(it) },
+            languageSettings = mapOf("de" to de.aarondietz.localizepipe.scan.LanguageSettings(disabled = true)),
+        )
+
+        assertTrue(translatedReadyRows.isEmpty())
+    }
 }

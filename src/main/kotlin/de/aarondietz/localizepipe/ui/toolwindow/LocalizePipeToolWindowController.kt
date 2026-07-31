@@ -402,6 +402,9 @@ class LocalizePipeToolWindowController(
                             acc
                         }
 
+                    var writtenCount = 0
+                    var writeErrors = 0
+
                     val translatedRows = translationService.translateRows(
                         rows = rowsToTranslate,
                         onProgress = { partialTranslatedRows, processedCount, speed ->
@@ -430,6 +433,18 @@ class LocalizePipeToolWindowController(
                                 )
                             }
                         },
+                        onRowTranslated = { translatedRow ->
+                            checkCanceled(indicator)
+                            val applyResult = applier.apply(
+                                rows = listOf(translatedRow),
+                                shouldCancel = {
+                                    checkCanceled(indicator)
+                                    false
+                                },
+                            )
+                            writtenCount += applyResult.appliedCount
+                            writeErrors += applyResult.errors.size
+                        },
                         shouldCancel = {
                             checkCanceled(indicator)
                             false
@@ -446,75 +461,6 @@ class LocalizePipeToolWindowController(
                     }
 
                     val errors = translatedRows.count { it.status == RowStatus.ERROR }
-                    val rowsToApply = synchronized(lock) {
-                        state.rows.filter { row ->
-                            !row.proposedText.isNullOrBlank() && row.status != RowStatus.ERROR
-                        }
-                    }
-
-                    if (rowsToApply.isEmpty()) {
-                        indicator.fraction = 1.0
-                        indicator.text2 = "Translating ${rowsToTranslate.size} / ${rowsToTranslate.size}"
-                        mutateState {
-                            copy(
-                                statusText = if (errors > 0) "Errors" else "Idle",
-                                isBusy = false,
-                                activeOperation = UiOperation.IDLE,
-                                progressCurrent = 0,
-                                progressTotal = 0,
-                                lastMessage = "Translation complete: ${translatedRows.size - errors} ok, $errors errors, 0 written",
-                            )
-                        }
-                        LOG.info(
-                            "Translation completed with nothing to write (rows=${translatedRows.size}, errors=$errors)",
-                        )
-                        runQueuedRescanIfNeeded()
-                        return
-                    }
-
-                    checkCanceled(indicator)
-                    indicator.isIndeterminate = false
-                    indicator.text = "LocalizePipe writing"
-                    indicator.text2 = "Writing 0 / ${rowsToApply.size}"
-                    // Keep translation progress at 100% once all rows are translated.
-                    indicator.fraction = 1.0
-                    mutateState {
-                        copy(
-                            statusText = "Writing",
-                            isBusy = true,
-                            activeOperation = UiOperation.APPLYING,
-                            progressCurrent = 0,
-                            progressTotal = rowsToApply.size,
-                            lastMessage = "Writing 0 / ${rowsToApply.size}",
-                        )
-                    }
-                    LOG.info("Writing translated strings immediately (rows=${rowsToApply.size})")
-                    val applyResult = applier.apply(
-                        rows = rowsToApply,
-                        onProgress = { processedCount, appliedCount ->
-                            checkCanceled(indicator)
-                            indicator.isIndeterminate = false
-                            indicator.text = "LocalizePipe writing"
-                            indicator.text2 = "Writing $processedCount / ${rowsToApply.size}"
-                            // Writing is post-translation work; keep translation completion visual at 100%.
-                            indicator.fraction = 1.0
-                            mutateState {
-                                copy(
-                                    statusText = "Writing",
-                                    isBusy = true,
-                                    activeOperation = UiOperation.APPLYING,
-                                    progressCurrent = processedCount,
-                                    progressTotal = rowsToApply.size,
-                                    lastMessage = "Writing $processedCount / ${rowsToApply.size} (written $appliedCount)",
-                                )
-                            }
-                        },
-                        shouldCancel = {
-                            checkCanceled(indicator)
-                            false
-                        },
-                    )
-                    val writeErrors = applyResult.errors.size
                     indicator.fraction = 1.0
 
                     mutateState {
@@ -524,11 +470,11 @@ class LocalizePipeToolWindowController(
                             activeOperation = UiOperation.IDLE,
                             progressCurrent = 0,
                             progressTotal = 0,
-                            lastMessage = "Translation + write complete: ${applyResult.appliedCount} written, $errors translation errors, $writeErrors write errors",
+                            lastMessage = "Translation + write complete: $writtenCount written, $errors translation errors, $writeErrors write errors",
                         )
                     }
                     LOG.info(
-                        "Translation + write completed (rows=${translatedRows.size}, written=${applyResult.appliedCount}, translationErrors=$errors, writeErrors=$writeErrors)",
+                        "Translation + write completed (rows=${translatedRows.size}, written=$writtenCount, translationErrors=$errors, writeErrors=$writeErrors)",
                     )
                     scheduleRescan(100)
                 } catch (cancelled: ProcessCanceledException) {
@@ -543,6 +489,7 @@ class LocalizePipeToolWindowController(
                         )
                     }
                     LOG.info("Translation cancelled")
+                    scheduleRescan(100)
                     throw cancelled
                 } finally {
                     clearCurrentProgressIndicator(indicator)
