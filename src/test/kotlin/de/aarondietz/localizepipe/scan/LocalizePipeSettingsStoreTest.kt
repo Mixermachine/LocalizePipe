@@ -100,4 +100,20 @@ class LocalizePipeSettingsStoreTest {
         val sr = LocalizePipeSettingsStore.languageSettingsFor(settings, "sr")
         assertEquals("sr-Cyrl", sr?.translationLocaleTag)
     }
+
+    @Test
+    fun serializesOmittingDefaultEntries() {
+        val settings = LocalizePipeSettings(
+            languages = mapOf(
+                "de" to LanguageSettings(), // All default (null, false, null)
+                "fr" to LanguageSettings(disabled = true),
+            ),
+        )
+
+        val serialized = LocalizePipeSettingsStore.serialize(settings)
+        val parsed = LocalizePipeSettingsStore.parse(serialized)
+
+        assertNull(LocalizePipeSettingsStore.languageSettingsFor(parsed, "de"))
+        assertEquals(true, LocalizePipeSettingsStore.languageSettingsFor(parsed, "fr")?.disabled)
+    }
 }

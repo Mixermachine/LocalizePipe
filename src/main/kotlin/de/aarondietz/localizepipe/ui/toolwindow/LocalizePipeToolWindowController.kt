@@ -22,7 +22,9 @@ import de.aarondietz.localizepipe.model.ScanOptions
 import de.aarondietz.localizepipe.model.ScanScope
 import de.aarondietz.localizepipe.model.StringEntryRow
 import de.aarondietz.localizepipe.model.TranslationDeleteTarget
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VfsUtil
 import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.scan.LocalizePipeSettings
 import de.aarondietz.localizepipe.scan.LocalizePipeSettingsStore
@@ -874,7 +876,44 @@ class LocalizePipeToolWindowController(
         }
     }
 
-    private fun readLocalizePipeSettings(resourceRootPath: String): LocalizePipeSettings {
+    fun readAllLanguageSettings(): Map<String, LocalizePipeSettings> {
+        val targets = snapshot().languageTargets
+        return targets.associate { target ->
+            target.resourceRootPath to readLocalizePipeSettings(target.resourceRootPath)
+        }
+    }
+
+    fun writeAllLanguageSettings(settingsByRoot: Map<String, LocalizePipeSettings>) {
+        WriteCommandAction.writeCommandAction(project)
+            .withName("Write LocalizePipe Language Settings")
+            .run<Throwable> {
+                for ((resourceRootPath, settings) in settingsByRoot) {
+                    val filePath = LocalizePipeSettingsStore.settingsFilePath(resourceRootPath)
+                    val file = LocalFileSystem.getInstance().findFileByPath(filePath)
+
+                    val nonDefaultLanguages = settings.languages.filterValues {
+                        it.translationLocaleTag != null || it.disabled || it.instructions != null
+                    }
+
+                    if (nonDefaultLanguages.isEmpty()) {
+                        if (file != null && file.exists()) {
+                            file.delete(this)
+                        }
+                    } else {
+                        val directoryPath = filePath.substringBeforeLast('/', missingDelimiterValue = "")
+                        val fileName = filePath.substringAfterLast('/')
+                        val directory = LocalFileSystem.getInstance().findFileByPath(directoryPath)
+                            ?: continue
+                        val targetFile = file ?: directory.createChildData(this, fileName)
+                        val cleanedSettings = LocalizePipeSettings(languages = nonDefaultLanguages)
+                        VfsUtil.saveText(targetFile, LocalizePipeSettingsStore.serialize(cleanedSettings))
+                    }
+                }
+            }
+        scheduleRescan(100)
+    }
+
+    internal fun readLocalizePipeSettings(resourceRootPath: String): LocalizePipeSettings {
         val settingsFile = LocalFileSystem.getInstance()
             .findFileByPath(LocalizePipeSettingsStore.settingsFilePath(resourceRootPath))
             ?: return LocalizePipeSettings()

@@ -33,8 +33,8 @@ import de.aarondietz.localizepipe.settings.LocalizePipeSettingsConfigurable
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
 import de.aarondietz.localizepipe.ui.dialog.KeyTranslationsDialog
-import de.aarondietz.localizepipe.ui.dialog.chooseAddLanguageRequest
 import de.aarondietz.localizepipe.ui.dialog.chooseDeleteTranslationTarget
+import de.aarondietz.localizepipe.ui.dialog.openLanguageSettingsDialog
 import de.aarondietz.localizepipe.ui.toolwindow.LocalizePipeToolWindowController
 import de.aarondietz.localizepipe.ui.toolwindow.ToolWindowUiState
 import java.awt.BorderLayout
@@ -59,8 +59,6 @@ class LocalizePipeSwingPanel(
 ) : JBPanel<LocalizePipeSwingPanel>(BorderLayout()) {
 
     private var selectedDeleteTargetId: String? = null
-    private var selectedLocaleTag: String? = null
-    private var selectedLanguageTargetIds: Set<String> = emptySet()
 
     private var currentState: ToolWindowUiState = controller.snapshot()
     private var groupedRows: List<GroupedStringRow> = emptyList()
@@ -100,7 +98,7 @@ class LocalizePipeSwingPanel(
             add(RescanAction())
             add(TranslateOrCancelAction())
             add(DeleteTranslationAction())
-            add(AddLanguageAction())
+            add(LanguageSettingsAction())
             add(SettingsAction())
         }
         val toolbar = ActionManager.getInstance().createActionToolbar(
@@ -492,7 +490,7 @@ class LocalizePipeSwingPanel(
         }
     }
 
-    private inner class AddLanguageAction : AnAction("Language", "Add a new target language resource file", AllIcons.General.Add), CustomComponentAction {
+    private inner class LanguageSettingsAction : AnAction("Languages", "Manage target languages and settings", AllIcons.General.Add), CustomComponentAction {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
         override fun createCustomComponent(presentation: Presentation, place: String): javax.swing.JComponent {
@@ -500,24 +498,13 @@ class LocalizePipeSwingPanel(
         }
 
         override fun update(e: AnActionEvent) {
-            e.presentation.text = "Language"
+            e.presentation.text = "Languages"
             e.presentation.isEnabled = currentState.languageTargets.isNotEmpty() && !currentState.isBusy
         }
 
         override fun actionPerformed(e: AnActionEvent) {
             if (currentState.languageTargets.isEmpty()) return
-            val request = chooseAddLanguageRequest(
-                project = project,
-                targets = currentState.languageTargets,
-                preselectedLocaleTag = selectedLocaleTag,
-                preselectedTargetIds = selectedLanguageTargetIds,
-            ) ?: return
-            selectedLocaleTag = request.localeTag
-            selectedLanguageTargetIds = request.targetIds
-            controller.addLanguage(
-                localeTag = request.localeTag,
-                targetIds = request.targetIds,
-            )
+            openLanguageSettingsDialog(project, controller)
         }
     }
 

@@ -51,17 +51,19 @@ object LocalizePipeSettingsStore {
             put(DESCRIPTION_FIELD, JsonPrimitive(DESCRIPTION_TEXT))
             put("languages", buildJsonObject {
                 settings.languages.toSortedMap().forEach { (localeTag, langSettings) ->
-                    put(localeTag, buildJsonObject {
-                        if (langSettings.translationLocaleTag != null) {
-                            put("translationLocaleTag", JsonPrimitive(langSettings.translationLocaleTag))
-                        }
-                        if (langSettings.disabled) {
-                            put("disabled", JsonPrimitive(true))
-                        }
-                        if (langSettings.instructions != null) {
-                            put("instructions", JsonPrimitive(langSettings.instructions))
-                        }
-                    })
+                    if (langSettings.translationLocaleTag != null || langSettings.disabled || langSettings.instructions != null) {
+                        put(localeTag, buildJsonObject {
+                            if (langSettings.translationLocaleTag != null) {
+                                put("translationLocaleTag", JsonPrimitive(langSettings.translationLocaleTag))
+                            }
+                            if (langSettings.disabled) {
+                                put("disabled", JsonPrimitive(true))
+                            }
+                            if (langSettings.instructions != null) {
+                                put("instructions", JsonPrimitive(langSettings.instructions))
+                            }
+                        })
+                    }
                 }
             })
         }
