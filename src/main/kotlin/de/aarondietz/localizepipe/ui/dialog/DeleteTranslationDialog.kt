@@ -11,11 +11,7 @@ import com.intellij.ui.components.JBScrollPane
 import de.aarondietz.localizepipe.model.TranslationDeleteTarget
 import java.awt.BorderLayout
 import java.awt.Dimension
-import javax.swing.DefaultListModel
-import javax.swing.JComponent
-import javax.swing.JList
-import javax.swing.JPanel
-import javax.swing.ListSelectionModel
+import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 

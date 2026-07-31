@@ -18,8 +18,7 @@ import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import java.util.Locale
-import javax.swing.Action
+import java.util.*
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel

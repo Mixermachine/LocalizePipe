@@ -2,6 +2,7 @@ package de.aarondietz.localizepipe.ui.toolwindow
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.module.ModuleUtilCore
@@ -11,20 +12,14 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.util.concurrency.AppExecutorUtil
 import de.aarondietz.localizepipe.apply.TranslationApplier
-import de.aarondietz.localizepipe.model.LanguageAddTarget
-import de.aarondietz.localizepipe.model.RowStatus
-import de.aarondietz.localizepipe.model.ScanOptions
-import de.aarondietz.localizepipe.model.ScanScope
-import de.aarondietz.localizepipe.model.StringEntryRow
-import de.aarondietz.localizepipe.model.TranslationDeleteTarget
-import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.vfs.VfsUtil
+import de.aarondietz.localizepipe.model.*
 import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.scan.LocalizePipeSettings
 import de.aarondietz.localizepipe.scan.LocalizePipeSettingsStore

@@ -8,7 +8,6 @@ import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.settings.OllamaRuntimeMode
 import de.aarondietz.localizepipe.settings.TranslationProviderType
 import de.aarondietz.localizepipe.settings.TranslationSettingsService
-import de.aarondietz.localizepipe.translation.OllamaGenerateResponseParser
 import de.aarondietz.localizepipe.translation.TranslateGemmaLanguageMapper
 import de.aarondietz.localizepipe.translation.TranslationOutputValidator
 import de.aarondietz.localizepipe.translation.ValidationError

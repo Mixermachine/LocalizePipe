@@ -4,10 +4,7 @@ import de.aarondietz.localizepipe.model.LanguageAddTarget
 import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.scan.LocalizePipeSettings
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
 
 class LanguageSettingsDialogTest {

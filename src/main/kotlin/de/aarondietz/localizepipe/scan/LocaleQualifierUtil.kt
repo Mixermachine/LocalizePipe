@@ -1,6 +1,6 @@
 package de.aarondietz.localizepipe.scan
 
-import java.util.Locale
+import java.util.*
 
 object LocaleQualifierUtil {
     fun qualifierToLocaleTag(qualifierRaw: String): String? {

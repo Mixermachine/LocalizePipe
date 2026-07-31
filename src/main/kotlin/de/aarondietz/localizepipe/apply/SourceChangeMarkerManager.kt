@@ -11,12 +11,7 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
-import de.aarondietz.localizepipe.scan.ResourcePathClassifier
-import de.aarondietz.localizepipe.scan.SourceChangeMarkerSupport
-import de.aarondietz.localizepipe.scan.SourceChangeMetadata
-import de.aarondietz.localizepipe.scan.SourceChangeMetadataStore
-import de.aarondietz.localizepipe.scan.StringResourceValue
-import de.aarondietz.localizepipe.scan.StringsXmlValueExtractor
+import de.aarondietz.localizepipe.scan.*
 
 class SourceChangeMarkerManager(private val project: Project) {
     fun populateMarkers(

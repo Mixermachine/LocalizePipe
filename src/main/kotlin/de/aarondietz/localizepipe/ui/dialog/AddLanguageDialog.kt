@@ -16,12 +16,8 @@ import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.translation.TranslateGemmaLanguageMapper
 import java.awt.BorderLayout
 import java.awt.Dimension
-import java.util.Locale
-import javax.swing.ButtonGroup
-import javax.swing.BoxLayout
-import javax.swing.JComponent
-import javax.swing.JList
-import javax.swing.JPanel
+import java.util.*
+import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
