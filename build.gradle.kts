@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "de.aarondietz"
-version = "0.0.17"
+version = "0.0.18"
 
 repositories {
     mavenCentral()
@@ -36,11 +36,14 @@ intellijPlatform {
         }
 
         changeNotes = """
-            - Complete rewrite of UI to Swing. Google no longer packages the Compose UI dependency in Android Studio, starting with 2026.1.
-            - Fixes not escaped new lines in translated text.
-            - Better display timeouts
-            - Enable and display streamed response
-        """.trimIndent()
+            - Improved language qualifier handling
+            - Added possibility to overwrite language qualifier. Helpful for languages with multiple alphabets. Can overwrite to fixed alphabet.
+            - Added possibility to provide custom instructions per language.
+            - Added possibility to disable translation for language.
+            - Improved progress display during translations
+            - Resets uncomplete translations with new start of translations (previous failures do not block future translations).
+            - Removes duplicate localizePipe tab at the top.
+        """.trimIndent().markdownToHtml()
     }
 
     pluginVerification {
@@ -112,4 +115,34 @@ kotlin {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY)
     }
+}
+
+private fun String.markdownToHtml(): String {
+    val lines = this.trimIndent().lines()
+    val htmlLines = mutableListOf<String>()
+    var inList = false
+
+    for (line in lines) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+            if (!inList) {
+                htmlLines.add("<ul>")
+                inList = true
+            }
+            val content = trimmed.substring(2).trim()
+            htmlLines.add("  <li>$content</li>")
+        } else {
+            if (inList) {
+                htmlLines.add("</ul>")
+                inList = false
+            }
+            if (trimmed.isNotEmpty()) {
+                htmlLines.add("<p>$trimmed</p>")
+            }
+        }
+    }
+    if (inList) {
+        htmlLines.add("</ul>")
+    }
+    return htmlLines.joinToString("\n")
 }
