@@ -7,7 +7,7 @@ object LocalizePipeSettingsStore {
     private val json = Json { prettyPrint = true }
     private const val DESCRIPTION_FIELD = "description_of_file"
     private const val DESCRIPTION_TEXT =
-        "LocalizePipe per-language translation settings. Checked into version control."
+        "LocalizePipe per-language translation settings."
 
     fun settingsFilePath(resourceRootPath: String): String {
         val parentPath = resourceRootParentPath(resourceRootPath)

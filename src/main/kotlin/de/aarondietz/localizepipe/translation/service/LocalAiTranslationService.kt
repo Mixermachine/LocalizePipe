@@ -311,7 +311,7 @@ class LocalAiTranslationService(
                         val currentTimeout = if (firstTokenReceived) tokenIdleTimeoutSeconds else timeoutSeconds
                         val line = try {
                             future.get(currentTimeout, TimeUnit.SECONDS)
-                        } catch (e: TimeoutException) {
+                        } catch (_: TimeoutException) {
                             future.cancel(true)
                             val msg = if (firstTokenReceived) {
                                 "Ollama generation stalled: no token received for ${tokenIdleTimeoutSeconds}s (received $tokenCount tokens)."
