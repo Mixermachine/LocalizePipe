@@ -103,8 +103,8 @@ jobs:
           echo "CERTIFICATE_CHAIN_FILE=$CERT_PATH" >> "$GITHUB_ENV"
           echo "PRIVATE_KEY_FILE=$KEY_PATH" >> "$GITHUB_ENV"
 
-      - name: Build, sign, and publish plugin
+      - name: Build, test, sign, and publish plugin
         env:
           PRIVATE_KEY_PASSWORD: ${{ secrets.JETBRAINS_PRIVATE_KEY_PASSWORD }}
           PUBLISH_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}
-        run: ./gradlew clean buildPlugin signPlugin publishPlugin --no-configuration-cache
+        run: ./gradlew clean test buildPlugin signPlugin publishPlugin --no-configuration-cache
