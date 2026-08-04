@@ -33,8 +33,26 @@ class TranslationSettingsServiceTest {
 
         service.toggleProvider()
 
+        assertEquals(TranslationProviderType.OPENAI_COMPATIBLE, service.providerType)
+        assertEquals("translategemma-4b", service.activeModel())
+        assertEquals("http://127.0.0.1:8080/v1/chat/completions", service.activeEndpoint())
+
+        service.toggleProvider()
+
         assertEquals(TranslationProviderType.OLLAMA, service.providerType)
         assertEquals("translategemma:4b", service.activeModel())
         assertEquals("http://127.0.0.1:11434/api/generate", service.activeEndpoint())
+    }
+
+    @Test
+    fun storesAndRetrievesOpenAiCompatibleSettings() {
+        val service = TranslationSettingsService()
+        service.openAiCompatibleBaseUrl = "http://localhost:1234"
+        service.openAiCompatibleModel = "translategemma-12b"
+        service.openAiCompatibleApiKey = "test-sk-key"
+
+        assertEquals("http://localhost:1234", service.openAiCompatibleBaseUrl())
+        assertEquals("translategemma-12b", service.openAiCompatibleModel())
+        assertEquals("test-sk-key", service.openAiCompatibleApiKey())
     }
 }

@@ -9,7 +9,7 @@ language files.
 
 - Finds untranslated strings in Android and Compose Multiplatform projects
 - Shows missing locales in one place
-- Generates translations with local AI (Ollama) or Hugging Face
+- Generates translations with local AI (Ollama, OpenAI-compatible servers, or Hugging Face)
 - Validates placeholders and XML safety before writing
 - Applies changes directly to `strings.xml`
 
@@ -17,7 +17,7 @@ language files.
 
 - Save time on repetitive translation work
 - Keep translation flow inside IntelliJ
-- Use local models with Ollama for privacy and speed
+- Use local models with Ollama, llama.cpp, vLLM, LM Studio, or OpenRouter for privacy and speed
 
 ## Ollama Setup (Recommended)
 
@@ -47,6 +47,17 @@ ollama pull translategemma:4b
 - Provider: `OLLAMA`
 - Base URL: `http://127.0.0.1:11434`
 - Model: `translategemma:4b`
+
+## OpenAI-compatible Setup (vLLM, TGI, llama.cpp, LM Studio, OpenRouter)
+
+LocalizePipe can connect to any inference server providing an OpenAI Chat Completions streaming endpoint (`/v1/chat/completions`).
+
+1. Select **OPENAI_COMPATIBLE** as the provider in **Settings -> LocalizePipe**.
+2. Configure base URL and model name:
+   - **llama.cpp server / LM Studio**: `http://127.0.0.1:8080`, model `translategemma-4b`
+   - **vLLM / TGI**: `http://localhost:8000/v1`, model `translategemma-4b`
+   - **OpenRouter**: `https://openrouter.ai/api/v1`, model name & API Key
+3. (Optional) Enter an **API Key** if your server or proxy requires Bearer token authorization.
 
 ## Quick Start
 

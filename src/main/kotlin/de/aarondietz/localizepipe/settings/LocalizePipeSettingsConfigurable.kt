@@ -50,12 +50,16 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
     private lateinit var huggingFaceBaseUrlField: JBTextField
     private lateinit var huggingFaceModelCombo: ComboBox<String>
     private lateinit var huggingFaceTokenField: JBTextField
+    private lateinit var openAiCompatibleBaseUrlField: JBTextField
+    private lateinit var openAiCompatibleModelCombo: ComboBox<String>
+    private lateinit var openAiCompatibleApiKeyField: JBTextField
     private lateinit var timeoutSecondsSpinner: JSpinner
     private lateinit var retryCountSpinner: JSpinner
     private lateinit var temperatureSpinner: JSpinner
     private lateinit var removeAddedTrailingPeriodCheckBox: JCheckBox
     private lateinit var ollamaProviderPanel: JPanel
     private lateinit var huggingFaceProviderPanel: JPanel
+    private lateinit var openAiCompatibleProviderPanel: JPanel
     private lateinit var modelGuidanceLabel: JLabel
     private lateinit var ollamaModelAvailabilityLabel: JLabel
     private lateinit var ollamaPullModelButton: JButton
@@ -98,9 +102,32 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         ollamaBaseUrlField = JBTextField()
         huggingFaceBaseUrlField = JBTextField()
         huggingFaceTokenField = JBTextField()
-        timeoutSecondsSpinner = JSpinner(SpinnerNumberModel(45L, 5L, 600L, 1L))
-        retryCountSpinner = JSpinner(SpinnerNumberModel(1, 0, 10, 1))
-        temperatureSpinner = JSpinner(SpinnerNumberModel(0.1, 0.0, 2.0, 0.1))
+        openAiCompatibleBaseUrlField = JBTextField()
+        openAiCompatibleApiKeyField = JBTextField()
+        timeoutSecondsSpinner = JSpinner(
+            SpinnerNumberModel(
+                Const.TIMEOUT_SECONDS,
+                Const.MIN_TIMEOUT_SECONDS,
+                Const.MAX_TIMEOUT_SECONDS,
+                Const.STEP_TIMEOUT_SECONDS,
+            ),
+        )
+        retryCountSpinner = JSpinner(
+            SpinnerNumberModel(
+                Const.RETRY_COUNT,
+                Const.MIN_RETRY_COUNT,
+                Const.MAX_RETRY_COUNT,
+                Const.STEP_RETRY_COUNT,
+            ),
+        )
+        temperatureSpinner = JSpinner(
+            SpinnerNumberModel(
+                Const.TEMPERATURE.toDouble(),
+                Const.MIN_TEMPERATURE,
+                Const.MAX_TEMPERATURE,
+                Const.STEP_TEMPERATURE,
+            ),
+        )
         removeAddedTrailingPeriodCheckBox =
             JCheckBox("Remove trailing '.' when source text has no trailing '.'").apply {
                 toolTipText = "Prevents model-added final dots when the original text does not end with a dot."
@@ -118,6 +145,11 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             "google/translategemma-4b-it",
             "google/translategemma-12b-it",
             "google/translategemma-27b-it",
+        )
+        openAiCompatibleModelCombo = editableModelCombo(
+            "translategemma-4b",
+            "translategemma-12b",
+            "translategemma-27b",
         )
         testSourceTextLabel = JLabel()
         testSourceTextField = JBTextField("Settings")
@@ -141,6 +173,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         }
         applyRecommendationRenderer(ollamaModelCombo)
         applyRecommendationRenderer(huggingFaceModelCombo)
+        applyRecommendationRenderer(openAiCompatibleModelCombo)
 
         val sourceChangeActionsPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
             add(trackSourceChangesCheckBox)
@@ -180,6 +213,12 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             .addLabeledComponent("Hugging Face token", huggingFaceTokenField)
             .panel
 
+        openAiCompatibleProviderPanel = FormBuilder.createFormBuilder()
+            .addLabeledComponent("OpenAI-compatible base URL", openAiCompatibleBaseUrlField)
+            .addLabeledComponent("OpenAI-compatible model", openAiCompatibleModelCombo)
+            .addLabeledComponent("API key", openAiCompatibleApiKeyField)
+            .panel
+
         modelGuidanceLabel = JLabel().apply {
             horizontalAlignment = JLabel.LEFT
             verticalAlignment = JLabel.TOP
@@ -217,6 +256,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             )
             add(ollamaProviderPanel)
             add(huggingFaceProviderPanel)
+            add(openAiCompatibleProviderPanel)
             add(modelGuidancePanel)
             add(translationTestPanel)
             add(
@@ -253,6 +293,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             updateModelGuidance()
         }
         huggingFaceModelCombo.addActionListener { updateModelGuidance() }
+        openAiCompatibleModelCombo.addActionListener { updateModelGuidance() }
         addTextChangeListener(ollamaBaseUrlField) { scheduleOllamaModelAvailabilityCheck() }
         sourceLocaleCombo.addActionListener { updateTestSourceLabel() }
         (ollamaModelCombo.editor.editorComponent as? JTextComponent)?.let { editor ->
@@ -262,6 +303,9 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             }
         }
         (huggingFaceModelCombo.editor.editorComponent as? JTextComponent)?.let { editor ->
+            addTextChangeListener(editor) { updateModelGuidance() }
+        }
+        (openAiCompatibleModelCombo.editor.editorComponent as? JTextComponent)?.let { editor ->
             addTextChangeListener(editor) { updateModelGuidance() }
         }
 
@@ -291,6 +335,9 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
                 huggingFaceBaseUrlField.text.trim() != appSettings.huggingFaceBaseUrl() ||
                 selectedModel(huggingFaceModelCombo) != appSettings.huggingFaceModel() ||
                 huggingFaceTokenField.text.trim() != appSettings.huggingFaceToken() ||
+                openAiCompatibleBaseUrlField.text.trim() != appSettings.openAiCompatibleBaseUrl() ||
+                selectedModel(openAiCompatibleModelCombo) != appSettings.openAiCompatibleModel() ||
+                openAiCompatibleApiKeyField.text.trim() != appSettings.openAiCompatibleApiKey() ||
                 removeAddedTrailingPeriodCheckBox.isSelected != appSettings.removeAddedTrailingPeriod() ||
                 (timeoutSecondsSpinner.value as Number).toLong() != appSettings.requestTimeoutSeconds() ||
                 (retryCountSpinner.value as Number).toInt() != appSettings.retryCount() ||
@@ -314,8 +361,13 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         appSettings.ollamaRuntimeMode =
             ollamaRuntimeModeCombo.selectedItem as? OllamaRuntimeMode ?: OllamaRuntimeMode.AUTO
         appSettings.huggingFaceBaseUrl = huggingFaceBaseUrlField.text.trim()
-        appSettings.huggingFaceModel = selectedModel(huggingFaceModelCombo).ifBlank { "google/translategemma-4b-it" }
+        appSettings.huggingFaceModel = selectedModel(huggingFaceModelCombo)
+            .ifBlank { Const.HUGGING_FACE_DEFAULT_MODEL }
         appSettings.huggingFaceToken = huggingFaceTokenField.text.trim()
+        appSettings.openAiCompatibleBaseUrl = openAiCompatibleBaseUrlField.text.trim()
+        appSettings.openAiCompatibleModel = selectedModel(openAiCompatibleModelCombo)
+            .ifBlank { Const.OPENAI_COMPATIBLE_DEFAULT_MODEL }
+        appSettings.openAiCompatibleApiKey = openAiCompatibleApiKeyField.text.trim()
         appSettings.removeAddedTrailingPeriodConfig = removeAddedTrailingPeriodCheckBox.isSelected
         appSettings.timeoutSecondsConfig = (timeoutSecondsSpinner.value as Number).toLong()
         appSettings.retryCountConfig = (retryCountSpinner.value as Number).toInt()
@@ -339,6 +391,9 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         huggingFaceBaseUrlField.text = appSettings.huggingFaceBaseUrl()
         huggingFaceModelCombo.selectedItem = appSettings.huggingFaceModel()
         huggingFaceTokenField.text = appSettings.huggingFaceToken()
+        openAiCompatibleBaseUrlField.text = appSettings.openAiCompatibleBaseUrl()
+        openAiCompatibleModelCombo.selectedItem = appSettings.openAiCompatibleModel()
+        openAiCompatibleApiKeyField.text = appSettings.openAiCompatibleApiKey()
         removeAddedTrailingPeriodCheckBox.isSelected = appSettings.removeAddedTrailingPeriod()
         timeoutSecondsSpinner.value = appSettings.requestTimeoutSeconds()
         retryCountSpinner.value = appSettings.retryCount()
@@ -455,6 +510,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         val provider = providerCombo.selectedItem as? TranslationProviderType ?: TranslationProviderType.OLLAMA
         ollamaProviderPanel.isVisible = provider == TranslationProviderType.OLLAMA
         huggingFaceProviderPanel.isVisible = provider == TranslationProviderType.HUGGING_FACE
+        openAiCompatibleProviderPanel.isVisible = provider == TranslationProviderType.OPENAI_COMPATIBLE
         updateModelGuidance()
         if (provider == TranslationProviderType.OLLAMA) {
             scheduleOllamaModelAvailabilityCheck()
@@ -469,6 +525,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         val selectedModel = when (provider) {
             TranslationProviderType.OLLAMA -> selectedModel(ollamaModelCombo)
             TranslationProviderType.HUGGING_FACE -> selectedModel(huggingFaceModelCombo)
+            TranslationProviderType.OPENAI_COMPATIBLE -> selectedModel(openAiCompatibleModelCombo)
         }
         modelGuidanceLabel.text = TranslateGemmaSizingGuide.guidanceHtml(
             providerType = provider,
@@ -547,13 +604,16 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         return SettingsSnapshot(
             providerType = providerCombo.selectedItem as? TranslationProviderType ?: TranslationProviderType.OLLAMA,
             sourceLocaleTag = selectedSourceLocaleTag(),
-            ollamaBaseUrl = ollamaBaseUrlField.text.trim().ifBlank { "http://127.0.0.1:11434" },
+            ollamaBaseUrl = ollamaBaseUrlField.text.trim().ifBlank { Const.OLLAMA_BASE_URL },
             ollamaModel = selectedModel(ollamaModelCombo)
                 .ifBlank { TranslationSettingsService.defaultOllamaModelForMachine() },
             ollamaRuntimeMode = ollamaRuntimeModeCombo.selectedItem as? OllamaRuntimeMode ?: OllamaRuntimeMode.AUTO,
-            huggingFaceBaseUrl = huggingFaceBaseUrlField.text.trim().ifBlank { "https://api-inference.huggingface.co" },
-            huggingFaceModel = selectedModel(huggingFaceModelCombo).ifBlank { "google/translategemma-4b-it" },
+            huggingFaceBaseUrl = huggingFaceBaseUrlField.text.trim().ifBlank { Const.HUGGING_FACE_BASE_URL },
+            huggingFaceModel = selectedModel(huggingFaceModelCombo).ifBlank { Const.HUGGING_FACE_DEFAULT_MODEL },
             huggingFaceToken = huggingFaceTokenField.text.trim(),
+            openAiCompatibleBaseUrl = openAiCompatibleBaseUrlField.text.trim().ifBlank { Const.OPENAI_COMPATIBLE_BASE_URL },
+            openAiCompatibleModel = selectedModel(openAiCompatibleModelCombo).ifBlank { Const.OPENAI_COMPATIBLE_DEFAULT_MODEL },
+            openAiCompatibleApiKey = openAiCompatibleApiKeyField.text.trim(),
             removeAddedTrailingPeriod = removeAddedTrailingPeriodCheckBox.isSelected,
             timeoutSeconds = (timeoutSecondsSpinner.value as Number).toLong(),
             retryCount = (retryCountSpinner.value as Number).toInt(),
@@ -574,6 +634,9 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             huggingFaceBaseUrl = snapshot.huggingFaceBaseUrl
             huggingFaceModel = snapshot.huggingFaceModel
             huggingFaceToken = snapshot.huggingFaceToken
+            openAiCompatibleBaseUrl = snapshot.openAiCompatibleBaseUrl
+            openAiCompatibleModel = snapshot.openAiCompatibleModel
+            openAiCompatibleApiKey = snapshot.openAiCompatibleApiKey
             removeAddedTrailingPeriodConfig = snapshot.removeAddedTrailingPeriod
             timeoutSecondsConfig = snapshot.timeoutSeconds
             retryCountConfig = snapshot.retryCount
@@ -647,7 +710,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         if ((providerCombo.selectedItem as? TranslationProviderType) != TranslationProviderType.OLLAMA) {
             return
         }
-        val baseUrl = ollamaBaseUrlField.text.trim().ifBlank { "http://127.0.0.1:11434" }
+        val baseUrl = ollamaBaseUrlField.text.trim().ifBlank { Const.OLLAMA_BASE_URL }
         val model = selectedModel(ollamaModelCombo)
         val timeoutSeconds = (timeoutSecondsSpinner.value as Number).toLong()
         val generation = ++ollamaAvailabilityCheckGeneration
@@ -693,7 +756,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             ollamaModelAvailabilityLabel.text = "Enter an Ollama model before pulling."
             return
         }
-        val baseUrl = ollamaBaseUrlField.text.trim().ifBlank { "http://127.0.0.1:11434" }
+        val baseUrl = ollamaBaseUrlField.text.trim().ifBlank { Const.OLLAMA_BASE_URL }
         val timeoutSeconds = (timeoutSecondsSpinner.value as Number).toLong()
         val generation = ++ollamaAvailabilityCheckGeneration
 
@@ -897,6 +960,9 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
         val huggingFaceBaseUrl: String,
         val huggingFaceModel: String,
         val huggingFaceToken: String,
+        val openAiCompatibleBaseUrl: String,
+        val openAiCompatibleModel: String,
+        val openAiCompatibleApiKey: String,
         val removeAddedTrailingPeriod: Boolean,
         val timeoutSeconds: Long,
         val retryCount: Int,

@@ -247,4 +247,15 @@ class LocalAiTranslationServiceTest {
 
         assertTrue(translatedReadyRows.isEmpty())
     }
+
+    @Test
+    fun resolvesOpenAiCompatibleProvider() {
+        val settings = de.aarondietz.localizepipe.settings.TranslationSettingsService().apply {
+            providerType = de.aarondietz.localizepipe.settings.TranslationProviderType.OPENAI_COMPATIBLE
+        }
+        val service = LocalAiTranslationService(settings) { "en" }
+        val provider = service.resolveProvider(de.aarondietz.localizepipe.settings.TranslationProviderType.OPENAI_COMPATIBLE)
+
+        assertTrue(provider is OpenAiCompatibleTranslationProvider)
+    }
 }

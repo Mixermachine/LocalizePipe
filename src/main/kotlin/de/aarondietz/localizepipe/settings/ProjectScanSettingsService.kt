@@ -10,11 +10,11 @@ import com.intellij.openapi.components.*
 class ProjectScanSettingsService :
     SimplePersistentStateComponent<ProjectScanSettingsService.ProjectScanState>(ProjectScanState()) {
     class ProjectScanState : BaseState() {
-        var includeAndroidResources by property(true)
-        var includeComposeResources by property(true)
-        var includeIdenticalToBase by property(false)
-        var trackSourceChanges by property(true)
-        var sourceLocaleTag by string("en")
+        var includeAndroidResources by property(Const.INCLUDE_ANDROID_RESOURCES)
+        var includeComposeResources by property(Const.INCLUDE_COMPOSE_RESOURCES)
+        var includeIdenticalToBase by property(Const.INCLUDE_IDENTICAL_TO_BASE)
+        var trackSourceChanges by property(Const.TRACK_SOURCE_CHANGES)
+        var sourceLocaleTag by string(Const.SOURCE_LOCALE_TAG)
     }
 
     var includeAndroidResources: Boolean

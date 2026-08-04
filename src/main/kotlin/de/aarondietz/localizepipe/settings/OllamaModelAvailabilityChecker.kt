@@ -20,7 +20,7 @@ internal object OllamaModelAvailabilityChecker {
             )
         }
 
-        val normalizedBaseUrl = baseUrl.trim().ifBlank { "http://127.0.0.1:11434" }.trimEnd('/')
+        val normalizedBaseUrl = baseUrl.trim().ifBlank { Const.OLLAMA_BASE_URL }.trimEnd('/')
         val timeout = timeoutSeconds.coerceIn(3L, 30L)
         val response = executeRequest(
             url = "$normalizedBaseUrl/api/tags",
@@ -90,7 +90,7 @@ internal object OllamaModelAvailabilityChecker {
             )
         }
 
-        val normalizedBaseUrl = baseUrl.trim().ifBlank { "http://127.0.0.1:11434" }.trimEnd('/')
+        val normalizedBaseUrl = baseUrl.trim().ifBlank { Const.OLLAMA_BASE_URL }.trimEnd('/')
         val timeout = timeoutSeconds.coerceIn(5L, 600L)
         val payload = buildJsonObject {
             put("name", trimmedModel)

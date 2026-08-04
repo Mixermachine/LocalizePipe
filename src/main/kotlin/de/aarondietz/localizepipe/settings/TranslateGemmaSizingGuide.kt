@@ -81,6 +81,7 @@ object TranslateGemmaSizingGuide {
         return when (providerType) {
             TranslationProviderType.OLLAMA -> "translategemma:${size.shortLabel.lowercase()}"
             TranslationProviderType.HUGGING_FACE -> "google/translategemma-${size.shortLabel.lowercase()}-it"
+            TranslationProviderType.OPENAI_COMPATIBLE -> "translategemma-${size.shortLabel.lowercase()}"
         }
     }
 

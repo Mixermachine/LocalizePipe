@@ -5,6 +5,7 @@ import com.intellij.openapi.components.*
 enum class TranslationProviderType {
     OLLAMA,
     HUGGING_FACE,
+    OPENAI_COMPATIBLE,
 }
 
 enum class OllamaRuntimeMode(val label: String) {
@@ -34,24 +35,29 @@ class TranslationSettingsService :
 
     class TranslationState : BaseState() {
         var providerType by enum(TranslationProviderType.OLLAMA)
-        var sourceLocaleTag by string("en")
+        var sourceLocaleTag by string(Const.SOURCE_LOCALE_TAG)
 
         // Ollama defaults
-        var ollamaBaseUrl by string("http://127.0.0.1:11434")
+        var ollamaBaseUrl by string(Const.OLLAMA_BASE_URL)
         var ollamaModel by string()
         var ollamaModelManuallySelected by property(false)
         var ollamaRuntimeMode by enum(OllamaRuntimeMode.AUTO)
 
         // Hugging Face defaults
-        var huggingFaceBaseUrl by string("https://api-inference.huggingface.co")
-        var huggingFaceModel by string("google/translategemma-4b-it")
+        var huggingFaceBaseUrl by string(Const.HUGGING_FACE_BASE_URL)
+        var huggingFaceModel by string(Const.HUGGING_FACE_DEFAULT_MODEL)
         var huggingFaceApiToken by string("")
 
+        // OpenAI-compatible defaults
+        var openAiCompatibleBaseUrl by string(Const.OPENAI_COMPATIBLE_BASE_URL)
+        var openAiCompatibleModel by string(Const.OPENAI_COMPATIBLE_DEFAULT_MODEL)
+        var openAiCompatibleApiKey by string("")
+
         // Shared generation defaults
-        var temperature by property(0.1f)
-        var timeoutSeconds by property(45L)
-        var retryCount by property(1)
-        var removeAddedTrailingPeriod by property(true)
+        var temperature by property(Const.TEMPERATURE)
+        var timeoutSeconds by property(Const.TIMEOUT_SECONDS)
+        var retryCount by property(Const.RETRY_COUNT)
+        var removeAddedTrailingPeriod by property(Const.REMOVE_ADDED_TRAILING_PERIOD)
     }
 
     var providerType: TranslationProviderType
@@ -67,7 +73,7 @@ class TranslationSettingsService :
         }
 
     var ollamaBaseUrl: String
-        get() = state.ollamaBaseUrl ?: "http://127.0.0.1:11434"
+        get() = state.ollamaBaseUrl ?: Const.OLLAMA_BASE_URL
         set(value) {
             state.ollamaBaseUrl = value
         }
@@ -95,13 +101,13 @@ class TranslationSettingsService :
         }
 
     var huggingFaceBaseUrl: String
-        get() = state.huggingFaceBaseUrl ?: "https://api-inference.huggingface.co"
+        get() = state.huggingFaceBaseUrl ?: Const.HUGGING_FACE_BASE_URL
         set(value) {
             state.huggingFaceBaseUrl = value
         }
 
     var huggingFaceModel: String
-        get() = state.huggingFaceModel ?: "google/translategemma-4b-it"
+        get() = state.huggingFaceModel ?: Const.HUGGING_FACE_DEFAULT_MODEL
         set(value) {
             state.huggingFaceModel = value
         }
@@ -110,6 +116,24 @@ class TranslationSettingsService :
         get() = state.huggingFaceApiToken ?: ""
         set(value) {
             state.huggingFaceApiToken = value
+        }
+
+    var openAiCompatibleBaseUrl: String
+        get() = state.openAiCompatibleBaseUrl ?: Const.OPENAI_COMPATIBLE_BASE_URL
+        set(value) {
+            state.openAiCompatibleBaseUrl = value
+        }
+
+    var openAiCompatibleModel: String
+        get() = state.openAiCompatibleModel?.takeIf { it.isNotBlank() } ?: Const.OPENAI_COMPATIBLE_DEFAULT_MODEL
+        set(value) {
+            state.openAiCompatibleModel = value
+        }
+
+    var openAiCompatibleApiKey: String
+        get() = state.openAiCompatibleApiKey ?: ""
+        set(value) {
+            state.openAiCompatibleApiKey = value
         }
 
     var timeoutSecondsConfig: Long
@@ -139,17 +163,26 @@ class TranslationSettingsService :
     fun activeModel(): String {
         return when (providerType) {
             TranslationProviderType.OLLAMA -> ollamaModel
-            TranslationProviderType.HUGGING_FACE -> state.huggingFaceModel ?: "google/translategemma-4b-it"
+            TranslationProviderType.HUGGING_FACE -> state.huggingFaceModel ?: Const.HUGGING_FACE_DEFAULT_MODEL
+            TranslationProviderType.OPENAI_COMPATIBLE -> state.openAiCompatibleModel ?: Const.OPENAI_COMPATIBLE_DEFAULT_MODEL
         }
     }
 
     fun activeEndpoint(): String {
         return when (providerType) {
-            TranslationProviderType.OLLAMA -> "${state.ollamaBaseUrl ?: "http://127.0.0.1:11434"}/api/generate"
+            TranslationProviderType.OLLAMA -> "${state.ollamaBaseUrl ?: Const.OLLAMA_BASE_URL}/api/generate"
             TranslationProviderType.HUGGING_FACE -> {
-                val baseUrl = state.huggingFaceBaseUrl ?: "https://api-inference.huggingface.co"
-                val model = state.huggingFaceModel ?: "google/translategemma-4b-it"
+                val baseUrl = state.huggingFaceBaseUrl ?: Const.HUGGING_FACE_BASE_URL
+                val model = state.huggingFaceModel ?: Const.HUGGING_FACE_DEFAULT_MODEL
                 "$baseUrl/models/$model"
+            }
+            TranslationProviderType.OPENAI_COMPATIBLE -> {
+                val baseUrl = (state.openAiCompatibleBaseUrl ?: Const.OPENAI_COMPATIBLE_BASE_URL).trimEnd('/')
+                when {
+                    baseUrl.endsWith("/v1/chat/completions") -> baseUrl
+                    baseUrl.endsWith("/v1") -> "$baseUrl/chat/completions"
+                    else -> "$baseUrl/v1/chat/completions"
+                }
             }
         }
     }
@@ -157,7 +190,8 @@ class TranslationSettingsService :
     fun toggleProvider() {
         providerType = when (providerType) {
             TranslationProviderType.OLLAMA -> TranslationProviderType.HUGGING_FACE
-            TranslationProviderType.HUGGING_FACE -> TranslationProviderType.OLLAMA
+            TranslationProviderType.HUGGING_FACE -> TranslationProviderType.OPENAI_COMPATIBLE
+            TranslationProviderType.OPENAI_COMPATIBLE -> TranslationProviderType.OLLAMA
         }
     }
 
@@ -191,6 +225,18 @@ class TranslationSettingsService :
 
     fun huggingFaceToken(): String {
         return huggingFaceToken
+    }
+
+    fun openAiCompatibleBaseUrl(): String {
+        return openAiCompatibleBaseUrl
+    }
+
+    fun openAiCompatibleModel(): String {
+        return openAiCompatibleModel
+    }
+
+    fun openAiCompatibleApiKey(): String {
+        return openAiCompatibleApiKey
     }
 
     fun requestTimeoutSeconds(): Long {
