@@ -17,6 +17,7 @@ import de.aarondietz.localizepipe.apply.SourceChangeMarkerManager
 import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.StringEntryRow
+import de.aarondietz.localizepipe.model.localeDisplayName
 import de.aarondietz.localizepipe.translation.TranslateGemmaLanguageMapper
 import de.aarondietz.localizepipe.translation.service.LocalAiTranslationService
 import java.awt.*
@@ -790,10 +791,7 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
             return
         }
         val sourceTag = selectedSourceLocaleTag()
-        val sourceLanguage = Locale.forLanguageTag(sourceTag)
-            .getDisplayLanguage(Locale.ENGLISH)
-            .replaceFirstChar { char -> if (char.isLowerCase()) char.titlecase(Locale.ENGLISH) else char.toString() }
-            .ifBlank { "Source" }
+        val sourceLanguage = localeDisplayName(sourceTag).ifBlank { "Source" }
         testSourceTextLabel.text = "$sourceLanguage test source text:"
     }
 
@@ -880,12 +878,8 @@ class LocalizePipeSettingsConfigurable(private val project: Project) : Configura
     }
 
     private fun localeDisplayLabel(localeTag: String): String {
-        val locale = Locale.forLanguageTag(localeTag)
-        val displayName = locale.getDisplayName(Locale.ENGLISH)
-            .replaceFirstChar { char -> if (char.isLowerCase()) char.titlecase(Locale.ENGLISH) else char.toString() }
-            .takeIf { it.isNotBlank() && it != localeTag }
-            ?: localeTag
-        return "$displayName ($localeTag)"
+        val displayName = localeDisplayName(localeTag)
+        return if (displayName != localeTag) "$displayName ($localeTag)" else localeTag
     }
 
     private data class SettingsSnapshot(

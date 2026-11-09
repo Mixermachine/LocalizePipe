@@ -12,6 +12,7 @@ import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.*
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
+import de.aarondietz.localizepipe.model.LanguageRecommendationRegistry
 import de.aarondietz.localizepipe.model.localeDisplayLabel
 import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.scan.LocalizePipeSettings
@@ -137,6 +138,9 @@ internal class LanguageSettingsDialog(
     private val selectLanguageButton = JButton("Select Language", AllIcons.Actions.Find)
     private val clearOverrideButton = JButton("Clear", AllIcons.Actions.Cancel)
     private val instructionsArea = JBTextArea(3, 40)
+    private val recommendationPanel = LanguageRecommendationPanel(preferredContentWidth = null, showActionLink = true)
+    private lateinit var detailPanel: JPanel
+    private val pendingInitialSettings = mutableMapOf<String, LanguageSettings>()
 
     private var selectedIndex = -1
     private var isUpdatingUi = false
@@ -178,19 +182,28 @@ internal class LanguageSettingsDialog(
         }
     }
 
-    private fun loadData(preserveLocaleTag: String? = null) {
+    private fun loadData(
+        preserveLocaleTag: String? = null,
+        pendingInitialSettingsMap: Map<String, LanguageSettings> = emptyMap(),
+    ) {
         val existingEditsByTag = rows.associate { row ->
             row.localeTag to Triple(row.disabled, row.translationLocaleTag, row.instructions)
+        }.toMutableMap()
+
+        for ((tag, initial) in pendingInitialSettingsMap) {
+            existingEditsByTag[tag] = Triple(initial.disabled, initial.translationLocaleTag, initial.instructions)
         }
 
         val state = controller.snapshot()
         val settingsByRoot = controller.readAllLanguageSettings()
 
+        val extraTags = (listOfNotNull(pendingLocaleTagToSelect) + pendingInitialSettings.keys + pendingInitialSettingsMap.keys).toSet()
+
         val newRows = computeLanguageSettingsRows(
             detectedLocales = state.detectedLocales,
             languageTargets = state.languageTargets,
             settingsByRoot = settingsByRoot,
-            extraLocaleTags = listOfNotNull(pendingLocaleTagToSelect).toSet(),
+            extraLocaleTags = extraTags,
         )
 
         for (row in newRows) {
@@ -243,8 +256,18 @@ internal class LanguageSettingsDialog(
                 )
                 if (request != null) {
                     pendingLocaleTagToSelect = request.localeTag
-                    controller.addLanguage(request.localeTag, request.targetIds)
-                    loadData(preserveLocaleTag = request.localeTag)
+                    if (request.initialSettings != null) {
+                        pendingInitialSettings[request.localeTag] = request.initialSettings
+                    }
+                    controller.addLanguage(request.localeTag, request.targetIds, request.initialSettings)
+                    loadData(
+                        preserveLocaleTag = request.localeTag,
+                        pendingInitialSettingsMap = if (request.initialSettings != null) {
+                            mapOf(request.localeTag to request.initialSettings)
+                        } else {
+                            emptyMap()
+                        },
+                    )
                 }
             }
         }
@@ -262,7 +285,7 @@ internal class LanguageSettingsDialog(
         centerPanel.add(scrollPane, BorderLayout.CENTER)
 
         // Detail panel
-        val detailPanel = JBPanel<JBPanel<*>>(GridBagLayout())
+        detailPanel = JBPanel<JBPanel<*>>(GridBagLayout())
         detailPanel.border = IdeBorderFactory.createTitledBorder("Selected Language Details", false)
 
         val gbc = GridBagConstraints().apply {
@@ -278,6 +301,19 @@ internal class LanguageSettingsDialog(
 
         gbc.gridy++
         detailPanel.add(disabledCheckBox, gbc)
+
+        gbc.gridy++
+        detailPanel.add(recommendationPanel, gbc)
+
+        recommendationPanel.setOnApplyRecommendation { rec ->
+            if (rec.recommendedOverrideTag != null && overrideTagField.isEnabled) {
+                overrideTagField.text = rec.recommendedOverrideTag
+                if (rec.recommendedInstructions != null && instructionsArea.text.isBlank()) {
+                    instructionsArea.text = rec.recommendedInstructions
+                }
+                refreshRecommendation(rec.localeTag, rec.recommendedOverrideTag)
+            }
+        }
 
         gbc.gridy++
         val overrideLabel = JBLabel("Translation locale tag override:")
@@ -380,8 +416,10 @@ internal class LanguageSettingsDialog(
     private fun updateFromFields() {
         if (isUpdatingUi || selectedIndex !in rows.indices) return
         val row = rows[selectedIndex]
-        row.translationLocaleTag = overrideTagField.text.trim().ifEmpty { null }
+        val overrideText = overrideTagField.text.trim().ifEmpty { null }
+        row.translationLocaleTag = overrideText
         row.instructions = instructionsArea.text.trim().ifEmpty { null }
+        refreshRecommendation(row.localeTag, overrideText)
         tableModel.fireTableCellUpdated(selectedIndex, 2)
         tableModel.fireTableCellUpdated(selectedIndex, 3)
     }
@@ -407,6 +445,7 @@ internal class LanguageSettingsDialog(
                 clearOverrideButton.isEnabled = false
                 instructionsArea.text = ""
                 instructionsArea.isEnabled = false
+                refreshRecommendation(null, null)
             } else {
                 selectedTitleLabel.text = "Selected Language: ${row.displayName}"
                 disabledCheckBox.isSelected = row.disabled
@@ -417,9 +456,19 @@ internal class LanguageSettingsDialog(
                 clearOverrideButton.isEnabled = true
                 instructionsArea.text = row.instructions.orEmpty()
                 instructionsArea.isEnabled = true
+                refreshRecommendation(row.localeTag, row.translationLocaleTag)
             }
         } finally {
             isUpdatingUi = false
+        }
+    }
+
+    private fun refreshRecommendation(localeTag: String?, currentOverride: String?) {
+        val rec = LanguageRecommendationRegistry.findRecommendation(localeTag)
+        recommendationPanel.setRecommendation(rec, currentOverride)
+        if (::detailPanel.isInitialized) {
+            detailPanel.revalidate()
+            detailPanel.repaint()
         }
     }
 
@@ -492,8 +541,9 @@ internal class LanguageSelectionDialog(
         )
         val isoLanguages = Locale.getISOLanguages().toList()
         val gemmaSupported = TranslateGemmaLanguageMapper.supportedLocaleTagsForUi()
+        val knownRecommendations = LanguageRecommendationRegistry.knownTags()
 
-        val allTags = (common + isoLanguages + gemmaSupported)
+        val allTags = (common + isoLanguages + gemmaSupported + knownRecommendations)
             .map { it.replace('_', '-') }
             .distinct()
             .sortedBy { localeDisplayLabel(it) }

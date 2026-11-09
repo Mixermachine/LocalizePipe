@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "de.aarondietz"
-version = "0.0.19"
+version = "0.0.20"
 
 repositories {
     mavenCentral()
@@ -36,13 +36,8 @@ intellijPlatform {
         }
 
         changeNotes = """
-            - Improved language qualifier handling
-            - Added possibility to overwrite language qualifier. Helpful for languages with multiple alphabets. Can overwrite to fixed alphabet.
-            - Added possibility to provide custom instructions per language.
-            - Added possibility to disable translation for language.
-            - Improved progress display during translations
-            - Resets uncomplete translations with new start of translations (previous failures do not block future translations).
-            - Removes duplicate localizePipe tab at the top.
+            - Adds support for new language Montenegrin (cnr).
+            - Adds recommendations for language overrides. TranslateGemma handles some language tags better than others.
         """.trimIndent().markdownToHtml()
     }
 
@@ -51,7 +46,8 @@ intellijPlatform {
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2025.3.2")
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.1")
             create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2")
-            create(IntelliJPlatformType.AndroidStudio, "2026.1.3.6")
+            create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.3")
+            create(IntelliJPlatformType.AndroidStudio, "2026.2.2.1")
             recommended()
         }
     }

@@ -139,4 +139,28 @@ class LanguageSettingsDialogTest {
         assertTrue(settings?.languages?.get("fr")?.disabled == true)
         assertEquals("Formal", settings?.languages?.get("fr")?.instructions)
     }
+
+    @Test
+    fun handlesNewLanguageWithInitialSettings() {
+        val detectedLocales = setOf("de", "fr")
+        val settingsByRoot = mapOf(
+            root1 to LocalizePipeSettings(
+                languages = mapOf(
+                    "cnr" to LanguageSettings(translationLocaleTag = "cnr-Latn"),
+                ),
+            ),
+        )
+
+        val rows = computeLanguageSettingsRows(
+            detectedLocales = detectedLocales,
+            languageTargets = listOf(target1),
+            settingsByRoot = settingsByRoot,
+            extraLocaleTags = setOf("cnr"),
+        )
+
+        val cnrRow = rows.firstOrNull { it.localeTag == "cnr" }
+        assertNotNull(cnrRow)
+        assertEquals("cnr-Latn", cnrRow?.translationLocaleTag)
+        assertEquals("cnr (Montenegrin)", cnrRow?.displayName)
+    }
 }

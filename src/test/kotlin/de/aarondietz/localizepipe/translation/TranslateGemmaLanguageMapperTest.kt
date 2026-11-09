@@ -2,6 +2,7 @@ package de.aarondietz.localizepipe.translation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TranslateGemmaLanguageMapperTest {
@@ -58,5 +59,27 @@ class TranslateGemmaLanguageMapperTest {
     @Test
     fun detectsScriptVariantsForAmbiguousLanguages() {
         assertEquals(setOf("Cyrl", "Latn"), TranslateGemmaLanguageMapper.scriptVariantsForLanguage("sr"))
+    }
+
+    @Test
+    fun mapsMontenegrinVariants() {
+        assertEquals("cnr-Latn", TranslateGemmaLanguageMapper.toGemmaCode("cnr-Latn"))
+        assertEquals("cnr-Cyrl", TranslateGemmaLanguageMapper.toGemmaCode("cnr-Cyrl"))
+        assertEquals("cnr-Latn", TranslateGemmaLanguageMapper.toGemmaCode("cnr-ME"))
+        assertEquals("cnr-Latn", TranslateGemmaLanguageMapper.toGemmaCode("cnr_latn"))
+    }
+
+    @Test
+    fun includesMontenegrinAndRegistryTagsInUiOptions() {
+        val uiTags = TranslateGemmaLanguageMapper.supportedLocaleTagsForUi()
+        assertTrue(uiTags.contains("cnr"))
+        assertTrue(uiTags.contains("cnr-Latn"))
+        assertTrue(uiTags.contains("cnr-Cyrl"))
+    }
+
+    @Test
+    fun fallsBackToBaseLanguageForUnmappedScript() {
+        assertEquals("uz", TranslateGemmaLanguageMapper.toGemmaCode("uz-Latn"))
+        assertEquals("bs", TranslateGemmaLanguageMapper.toGemmaCode("bs-Latn"))
     }
 }

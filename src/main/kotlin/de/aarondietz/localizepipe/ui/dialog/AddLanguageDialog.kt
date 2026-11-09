@@ -12,7 +12,10 @@ import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import de.aarondietz.localizepipe.model.LanguageAddTarget
+import de.aarondietz.localizepipe.model.LanguageRecommendationRegistry
 import de.aarondietz.localizepipe.model.ResourceKind
+import de.aarondietz.localizepipe.model.localeDisplayName
+import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.translation.TranslateGemmaLanguageMapper
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -24,6 +27,7 @@ import javax.swing.event.DocumentListener
 internal data class AddLanguageRequest(
     val localeTag: String,
     val targetIds: Set<String>,
+    val initialSettings: LanguageSettings? = null,
 )
 
 internal fun chooseAddLanguageRequest(
@@ -47,6 +51,10 @@ private class AddLanguageDialog(
 ) : DialogWrapper(project, true) {
     private val localeComboBox = ComboBox<LocaleOption>()
     private val localeFilterField = SearchTextField(false)
+    private val recommendationPanel = LanguageRecommendationPanel(preferredContentWidth = null, showActionLink = false)
+    private val applyRecommendationCheckBox = JBCheckBox("", true).apply {
+        isVisible = false
+    }
     private val targetRows = linkedMapOf<String, TargetRow>()
     private val detailsLabel = JBLabel()
     private val kindButtons = linkedMapOf<ResourceKind, JBRadioButton>()
@@ -54,6 +62,8 @@ private class AddLanguageDialog(
     private val targetsPanel = JPanel()
     private var allLocaleOptions: List<LocaleOption> = emptyList()
     private var pendingPreselectedLocaleTag: String? = normalizeLocaleTag(preselectedLocaleTag)
+    private var isUpdatingLocaleOptions = false
+    private var lastSelectedLocaleTag: String? = null
     private val allKinds = targets.map { it.originKind }.distinct()
     private val activeKindsByExistingLocales = targets
         .filter { it.existingLocaleTags.isNotEmpty() }
@@ -73,6 +83,11 @@ private class AddLanguageDialog(
         localeComboBox.renderer = LocaleOptionRenderer()
         localeComboBox.isEditable = false
         localeComboBox.maximumRowCount = 14
+        localeComboBox.addItemListener { e ->
+            if (!isUpdatingLocaleOptions && e.stateChange == java.awt.event.ItemEvent.SELECTED) {
+                onLocaleSelectionChanged()
+            }
+        }
         installLocaleFiltering()
 
         val targetIdsByKind = targets.associate { target -> target.id to target.originKind }
@@ -110,7 +125,22 @@ private class AddLanguageDialog(
         localePanel.add(languageTypePanel(), BorderLayout.NORTH)
         localeFilterField.textEditor.emptyText.text = "Filter languages by name or locale code"
         localePanel.add(localeFilterField, BorderLayout.CENTER)
-        localePanel.add(localeComboBox, BorderLayout.SOUTH)
+
+        val localeSelectionContainer = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(localeComboBox)
+            val recContainer = JPanel(BorderLayout()).apply {
+                border = JBUI.Borders.emptyTop(6)
+                add(recommendationPanel, BorderLayout.CENTER)
+            }
+            add(recContainer)
+            val checkContainer = JPanel(BorderLayout()).apply {
+                border = JBUI.Borders.emptyTop(4)
+                add(applyRecommendationCheckBox, BorderLayout.WEST)
+            }
+            add(checkContainer)
+        }
+        localePanel.add(localeSelectionContainer, BorderLayout.SOUTH)
         topPanel.add(localePanel, BorderLayout.CENTER)
         panel.add(topPanel, BorderLayout.NORTH)
 
@@ -168,9 +198,20 @@ private class AddLanguageDialog(
             return
         }
 
+        val initialSettings = if (applyRecommendationCheckBox.isVisible && applyRecommendationCheckBox.isSelected) {
+            val rec = LanguageRecommendationRegistry.findRecommendation(localeTag)
+            if (rec?.recommendedOverrideTag != null || rec?.recommendedInstructions != null) {
+                LanguageSettings(
+                    translationLocaleTag = rec.recommendedOverrideTag,
+                    instructions = rec.recommendedInstructions,
+                )
+            } else null
+        } else null
+
         selectedRequest = AddLanguageRequest(
             localeTag = localeTag,
             targetIds = selectedIds,
+            initialSettings = initialSettings,
         )
         super.doOKAction()
     }
@@ -281,18 +322,49 @@ private class AddLanguageDialog(
             }
         }
 
-        localeComboBox.removeAllItems()
-        filteredOptions.forEach { option -> localeComboBox.addItem(option) }
+        isUpdatingLocaleOptions = true
+        try {
+            localeComboBox.removeAllItems()
+            filteredOptions.forEach { option -> localeComboBox.addItem(option) }
 
-        val preferredOption = filteredOptions.firstOrNull { option -> option.tag.equals(preferredTag, ignoreCase = true) }
-            ?: if (query.isBlank()) {
-                filteredOptions.firstOrNull { option -> !option.alreadyDetected } ?: filteredOptions.firstOrNull()
-            } else {
-                filteredOptions.firstOrNull()
+            val preferredOption = filteredOptions.firstOrNull { option -> option.tag.equals(preferredTag, ignoreCase = true) }
+                ?: if (query.isBlank()) {
+                    filteredOptions.firstOrNull { option -> !option.alreadyDetected } ?: filteredOptions.firstOrNull()
+                } else {
+                    filteredOptions.firstOrNull()
+                }
+            if (preferredOption != null) {
+                localeComboBox.selectedItem = preferredOption
             }
-        if (preferredOption != null) {
-            localeComboBox.selectedItem = preferredOption
+        } finally {
+            isUpdatingLocaleOptions = false
         }
+        onLocaleSelectionChanged()
+    }
+
+    private fun onLocaleSelectionChanged() {
+        val selectedOption = localeComboBox.selectedItem as? LocaleOption
+        val localeTag = selectedOption?.tag
+        val rec = LanguageRecommendationRegistry.findRecommendation(localeTag)
+        recommendationPanel.setRecommendation(rec)
+
+        val hasActionableSetting = rec?.recommendedOverrideTag != null || rec?.recommendedInstructions != null
+        if (hasActionableSetting) {
+            val labelText = when {
+                rec.recommendedOverrideTag != null -> "Apply recommended translation override: ${rec.recommendedOverrideTag}"
+                else -> "Apply recommended instructions"
+            }
+            applyRecommendationCheckBox.text = labelText
+            applyRecommendationCheckBox.isVisible = true
+            if (localeTag != lastSelectedLocaleTag) {
+                applyRecommendationCheckBox.isSelected = true
+            }
+        } else {
+            applyRecommendationCheckBox.isVisible = false
+            applyRecommendationCheckBox.isSelected = false
+        }
+        lastSelectedLocaleTag = localeTag
+        updateSelectionState()
     }
 
     private fun selectedKind(): ResourceKind? {
@@ -374,8 +446,9 @@ private fun localeSuggestions(targets: List<LanguageAddTarget>): List<String> {
     val existing = targets.flatMap { it.existingLocaleTags }
     val isoLanguages = Locale.getISOLanguages().toList()
     val gemmaSupported = TranslateGemmaLanguageMapper.supportedLocaleTagsForUi()
+    val knownRecommendationTags = LanguageRecommendationRegistry.knownTags()
 
-    return (common + existing + isoLanguages + gemmaSupported)
+    return (common + existing + isoLanguages + gemmaSupported + knownRecommendationTags)
         .map { it.replace('_', '-') }
         .distinct()
         .sortedBy { localeDisplayName(it) }
@@ -388,15 +461,4 @@ private fun existingLocalesText(target: LanguageAddTarget): String {
     return target.existingLocaleTags
         .sortedBy { localeDisplayName(it) }
         .joinToString(", ") { localeTag -> "${localeDisplayName(localeTag)} ($localeTag)" }
-}
-
-private fun localeDisplayName(localeTag: String): String {
-    val locale = Locale.forLanguageTag(localeTag)
-    val displayName = locale.getDisplayName(Locale.ENGLISH)
-    if (displayName.isBlank() || displayName == localeTag) {
-        return localeTag
-    }
-    return displayName.replaceFirstChar { char ->
-        if (char.isLowerCase()) char.titlecase(Locale.ENGLISH) else char.toString()
-    }
 }

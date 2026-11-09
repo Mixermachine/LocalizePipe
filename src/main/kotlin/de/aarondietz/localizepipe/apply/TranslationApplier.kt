@@ -15,7 +15,10 @@ import de.aarondietz.localizepipe.model.LanguageAddTarget
 import de.aarondietz.localizepipe.model.ResourceKind
 import de.aarondietz.localizepipe.model.StringEntryRow
 import de.aarondietz.localizepipe.model.TranslationDeleteTarget
+import de.aarondietz.localizepipe.scan.LanguageSettings
 import de.aarondietz.localizepipe.scan.LocaleQualifierUtil
+import de.aarondietz.localizepipe.scan.LocalizePipeSettings
+import de.aarondietz.localizepipe.scan.LocalizePipeSettingsStore
 import de.aarondietz.localizepipe.scan.StringsXmlValueExtractor
 import de.aarondietz.localizepipe.settings.ProjectScanSettingsService
 
@@ -142,6 +145,7 @@ class TranslationApplier(private val project: Project) {
     fun addLanguage(
         localeTag: String,
         targets: List<LanguageAddTarget>,
+        initialSettings: LanguageSettings? = null,
         onProgress: (processedCount: Int, createdCount: Int) -> Unit = { _, _ -> },
         shouldCancel: () -> Boolean = { false },
     ): AddLanguageResult {
@@ -176,6 +180,10 @@ class TranslationApplier(private val project: Project) {
                             }
                             skippedCount++
                         }
+
+                        if (initialSettings != null) {
+                            applyInitialSettings(target.resourceRootPath, normalizedLocaleTag, initialSettings)
+                        }
                     } catch (error: Throwable) {
                         LOG.warn(
                             "Failed to add locale='$normalizedLocaleTag' in resource root='${target.resourceRootPath}'",
@@ -197,6 +205,28 @@ class TranslationApplier(private val project: Project) {
             skippedCount = skippedCount,
             errors = errors,
         )
+    }
+
+    private fun applyInitialSettings(
+        resourceRootPath: String,
+        localeTag: String,
+        initialSettings: LanguageSettings,
+    ) {
+        val filePath = LocalizePipeSettingsStore.settingsFilePath(resourceRootPath)
+        val file = LocalFileSystem.getInstance().findFileByPath(filePath)
+        val currentSettings = if (file != null && file.exists()) {
+            val raw = runCatching { file.inputStream.bufferedReader().use { it.readText() } }.getOrDefault("")
+            LocalizePipeSettingsStore.parse(raw)
+        } else {
+            LocalizePipeSettings()
+        }
+        val cleanedSettings = mergeInitialLanguageSettings(currentSettings, localeTag, initialSettings)
+
+        val directoryPath = filePath.substringBeforeLast('/', missingDelimiterValue = "")
+        val fileName = filePath.substringAfterLast('/')
+        val directory = LocalFileSystem.getInstance().findFileByPath(directoryPath) ?: return
+        val targetFile = file ?: directory.createChildData(this, fileName)
+        VfsUtil.saveText(targetFile, LocalizePipeSettingsStore.serialize(cleanedSettings))
     }
 
     private fun ensureLocaleFile(row: StringEntryRow) =
@@ -263,6 +293,25 @@ class TranslationApplier(private val project: Project) {
     }
 
     internal companion object {
+        internal fun mergeInitialLanguageSettings(
+            existingSettings: LocalizePipeSettings,
+            localeTag: String,
+            initialSettings: LanguageSettings,
+        ): LocalizePipeSettings {
+            val updatedLanguages = existingSettings.languages.toMutableMap()
+            val existing = updatedLanguages[localeTag]
+            updatedLanguages[localeTag] = if (existing != null) {
+                existing.copy(
+                    translationLocaleTag = initialSettings.translationLocaleTag ?: existing.translationLocaleTag,
+                    instructions = initialSettings.instructions ?: existing.instructions,
+                    disabled = initialSettings.disabled || existing.disabled,
+                )
+            } else {
+                initialSettings
+            }
+            return LocalizePipeSettings(languages = updatedLanguages)
+        }
+
         internal fun normalizeForWrite(translatedText: String, kind: ResourceKind): String {
             val xmlUnescaped = StringUtil.unescapeXmlEntities(translatedText).trimEnd('\r', '\n')
             val xmlSanitized = normalizeProblematicWhitespace(stripInvalidXmlChars(xmlUnescaped))

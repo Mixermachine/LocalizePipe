@@ -149,4 +149,41 @@ class TranslationApplierFormattingTest {
         assertEquals("Line 1\\n\\nLine 2", normalized)
     }
 
+    @Test
+    fun mergeInitialLanguageSettingsPreservesExistingSettingsNonDestructively() {
+        val existing = de.aarondietz.localizepipe.scan.LocalizePipeSettings(
+            languages = mapOf(
+                "cnr" to de.aarondietz.localizepipe.scan.LanguageSettings(
+                    translationLocaleTag = "old-tag",
+                    disabled = true,
+                    instructions = "Existing instructions",
+                ),
+            ),
+        )
+
+        val initial = de.aarondietz.localizepipe.scan.LanguageSettings(
+            translationLocaleTag = "cnr-Latn",
+            disabled = false,
+            instructions = null,
+        )
+
+        val merged = TranslationApplier.mergeInitialLanguageSettings(existing, "cnr", initial)
+        val cnrSettings = merged.languages["cnr"]
+        assertNotNull(cnrSettings)
+        assertEquals("cnr-Latn", cnrSettings?.translationLocaleTag)
+        assertTrue("Disabled state should remain true when previously disabled", cnrSettings?.disabled == true)
+        assertEquals("Existing instructions", cnrSettings?.instructions)
+    }
+
+    @Test
+    fun mergeInitialLanguageSettingsCreatesNewEntryWhenNotPresent() {
+        val existing = de.aarondietz.localizepipe.scan.LocalizePipeSettings()
+        val initial = de.aarondietz.localizepipe.scan.LanguageSettings(
+            translationLocaleTag = "cnr-Latn",
+        )
+
+        val merged = TranslationApplier.mergeInitialLanguageSettings(existing, "cnr", initial)
+        assertEquals("cnr-Latn", merged.languages["cnr"]?.translationLocaleTag)
+    }
+
 }

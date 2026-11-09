@@ -357,12 +357,7 @@ class LocalizePipeSwingPanel(
     }
 
     private fun sourceLocaleDisplayName(sourceLocaleTag: String): String {
-        val locale = Locale.forLanguageTag(sourceLocaleTag)
-        val displayName = locale.getDisplayName(Locale.ENGLISH)
-            .replaceFirstChar { char -> if (char.isLowerCase()) char.titlecase(Locale.ENGLISH) else char.toString() }
-            .takeIf { it.isNotBlank() && it != sourceLocaleTag }
-            ?: sourceLocaleTag
-        return displayName
+        return localeDisplayName(sourceLocaleTag)
     }
 
     // --- Actions ---

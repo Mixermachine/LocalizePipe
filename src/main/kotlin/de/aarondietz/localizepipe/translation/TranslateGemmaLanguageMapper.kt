@@ -1,5 +1,6 @@
 package de.aarondietz.localizepipe.translation
 
+import de.aarondietz.localizepipe.model.LanguageRecommendationRegistry
 import java.util.*
 
 object TranslateGemmaLanguageMapper {
@@ -12,6 +13,8 @@ object TranslateGemmaLanguageMapper {
         "bjn-Arab",
         "bm-Nkoo",
         "ccp-Latn",
+        "cnr-Cyrl",
+        "cnr-Latn",
         "crh-Latn",
         "fa-AF",
         "fr-CA",
@@ -46,10 +49,11 @@ object TranslateGemmaLanguageMapper {
         "zh-HK" to "zh-TW",
         "zh-MO" to "zh-TW",
         "zh-Hant" to "zh-TW",
+        "cnr-ME" to "cnr-Latn",
     )
 
     fun supportedLocaleTagsForUi(): List<String> {
-        return (Locale.getISOLanguages().toSet() + supportedExactTags)
+        return (Locale.getISOLanguages().toSet() + supportedExactTags + LanguageRecommendationRegistry.knownTags())
             .sorted()
     }
 
@@ -66,15 +70,15 @@ object TranslateGemmaLanguageMapper {
 
     fun toGemmaCode(localeTag: String): String? {
         val trimmed = localeTag.trim()
-        if (trimmed.matches(Regex("[a-z]{3}_[A-Za-z]{4}"))) {
-            // Keep existing NLLB-style codes usable for backward compatibility.
-            return trimmed
-        }
-
         val normalizedTag = normalizeTag(trimmed)
         byExactTag[normalizedTag]?.let { return it }
         if (supportedExactTags.contains(normalizedTag)) {
             return normalizedTag
+        }
+
+        if (trimmed.matches(Regex("[a-z]{3}_[A-Za-z]{4}"))) {
+            // Keep existing NLLB-style codes usable for backward compatibility.
+            return trimmed
         }
 
         val locale = Locale.forLanguageTag(normalizedTag)

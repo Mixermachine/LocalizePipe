@@ -73,12 +73,5 @@ fun GroupedStringRow.preferredRow(selectedRowId: String?): StringEntryRow {
     return rows.first()
 }
 
-fun localeDisplayLabel(localeTag: String): String {
-    val parsed = java.util.Locale.forLanguageTag(localeTag)
-    val display = parsed.getDisplayName(java.util.Locale.ENGLISH)
-    return if (display.isNotBlank() && display != localeTag) {
-        "$localeTag ($display)"
-    } else {
-        localeTag
-    }
-}
+fun localeDisplayLabel(localeTag: String): String = LocaleDisplayUtil.localeDisplayLabel(localeTag)
+fun localeDisplayName(localeTag: String): String = LocaleDisplayUtil.localeDisplayName(localeTag)

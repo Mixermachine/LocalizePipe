@@ -12,6 +12,7 @@ import com.intellij.ui.table.JBTable
 import de.aarondietz.localizepipe.model.GroupedStringRow
 import de.aarondietz.localizepipe.model.RowStatus
 import de.aarondietz.localizepipe.model.StringEntryRow
+import de.aarondietz.localizepipe.model.localeDisplayName
 import de.aarondietz.localizepipe.scan.ResourcePathClassifier
 import de.aarondietz.localizepipe.scan.StringsXmlValueExtractor
 import java.awt.BorderLayout
@@ -191,12 +192,8 @@ class KeyTranslationsDialog(
         }
 
         private fun localeDisplayLabel(localeTag: String): String {
-            val locale = Locale.forLanguageTag(localeTag)
-            val displayName = locale.getDisplayName(Locale.ENGLISH)
-                .replaceFirstChar { char -> if (char.isLowerCase()) char.titlecase(Locale.ENGLISH) else char.toString() }
-                .takeIf { it.isNotBlank() && it != localeTag }
-                ?: localeTag
-            return "$displayName ($localeTag)"
+            val displayName = localeDisplayName(localeTag)
+            return if (displayName != localeTag) "$displayName ($localeTag)" else localeTag
         }
     }
 }

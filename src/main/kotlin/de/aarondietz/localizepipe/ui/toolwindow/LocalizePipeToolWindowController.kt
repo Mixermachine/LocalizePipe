@@ -599,7 +599,11 @@ class LocalizePipeToolWindowController(
         })
     }
 
-    fun addLanguage(localeTag: String, targetIds: Set<String>) {
+    fun addLanguage(
+        localeTag: String,
+        targetIds: Set<String>,
+        initialSettings: LanguageSettings? = null,
+    ) {
         if (isBusy()) {
             LOG.debug("Add language ignored because another operation is in progress")
             mutateState { copy(lastMessage = "Another operation is already running") }
@@ -647,6 +651,7 @@ class LocalizePipeToolWindowController(
                     val addResult = applier.addLanguage(
                         localeTag = normalizedLocaleTag,
                         targets = targets,
+                        initialSettings = initialSettings,
                         onProgress = { processedCount, createdCount ->
                             checkCanceled(indicator)
                             updateProgressIndicator(
