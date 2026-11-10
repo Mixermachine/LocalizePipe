@@ -48,6 +48,38 @@ class LanguageRecommendationRegistryTest {
     }
 
     @Test
+    fun findsRecommendationForDualScriptLanguages() {
+        val uz = LanguageRecommendationRegistry.findRecommendation("uz")
+        assertNotNull(uz)
+        assertEquals("uz-Latn", uz?.recommendedOverrideTag)
+        assertEquals(RecommendationSeverity.RECOMMENDATION, uz?.severity)
+
+        val tk = LanguageRecommendationRegistry.findRecommendation("tk")
+        assertNotNull(tk)
+        assertEquals("tk-Latn", tk?.recommendedOverrideTag)
+
+        val zh = LanguageRecommendationRegistry.findRecommendation("zh")
+        assertNotNull(zh)
+        assertNull(zh?.recommendedOverrideTag)
+        assertEquals(RecommendationSeverity.RECOMMENDATION, zh?.severity)
+
+        val ku = LanguageRecommendationRegistry.findRecommendation("ku")
+        assertNotNull(ku)
+        assertEquals("ku-Latn", ku?.recommendedOverrideTag)
+        assertEquals(RecommendationSeverity.WARNING, ku?.severity)
+    }
+
+    @Test
+    fun dynamicallyRecommendsOverrideForLanguagesWithMultipleScripts() {
+        // bjn has bjn-Arab and bjn-Latn in TranslateGemma exact tags
+        val bjn = LanguageRecommendationRegistry.findRecommendation("bjn")
+        assertNotNull(bjn)
+        assertEquals(RecommendationSeverity.RECOMMENDATION, bjn?.severity)
+        assertTrue(bjn!!.infoMessage.contains("multiple scripts"))
+        assertTrue(bjn.infoMessage.contains("prevent the model from switching between alphabets"))
+    }
+
+    @Test
     fun knownTagsIncludeMontenegrinAndSerbian() {
         val known = LanguageRecommendationRegistry.knownTags()
         assertTrue(known.contains("cnr"))
@@ -55,5 +87,9 @@ class LanguageRecommendationRegistryTest {
         assertTrue(known.contains("cnr-Cyrl"))
         assertTrue(known.contains("sr"))
         assertTrue(known.contains("sr-ME"))
+        assertTrue(known.contains("uz"))
+        assertTrue(known.contains("tk"))
+        assertTrue(known.contains("zh"))
+        assertTrue(known.contains("ku"))
     }
 }

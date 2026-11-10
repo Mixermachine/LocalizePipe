@@ -79,7 +79,8 @@ class TranslateGemmaLanguageMapperTest {
 
     @Test
     fun fallsBackToBaseLanguageForUnmappedScript() {
-        assertEquals("uz", TranslateGemmaLanguageMapper.toGemmaCode("uz-Latn"))
+        assertEquals("uz-Latn", TranslateGemmaLanguageMapper.toGemmaCode("uz-Latn"))
+        assertEquals("az", TranslateGemmaLanguageMapper.toGemmaCode("az-Cyrl"))
         assertEquals("bs", TranslateGemmaLanguageMapper.toGemmaCode("bs-Latn"))
     }
 }

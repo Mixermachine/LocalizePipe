@@ -37,4 +37,13 @@ class LocaleDisplayUtilTest {
         assertEquals("Montenegrin", LocaleDisplayUtil.localeDisplayName("CNR"))
         assertEquals("Montenegrin (Latin)", LocaleDisplayUtil.localeDisplayName("cnr_latn"))
     }
+
+    @Test
+    fun formatsExactScriptTags() {
+        assertEquals("Crimean Tatar (Latin)", LocaleDisplayUtil.localeDisplayName("crh-Latn"))
+        assertEquals("Banjarese (Arabic)", LocaleDisplayUtil.localeDisplayName("bjn-Arab"))
+        assertEquals("Uzbek (Latin)", LocaleDisplayUtil.localeDisplayName("uz-Latn"))
+        assertEquals("Turkmen (Latin)", LocaleDisplayUtil.localeDisplayName("tk-Latn"))
+        assertEquals("Central Kurdish (Sorani)", LocaleDisplayUtil.localeDisplayName("ckb"))
+    }
 }
